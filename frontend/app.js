@@ -290,7 +290,12 @@ function clearChatUI() {
 function handleTurnPayload(payload) {
   if (!payload || !payload.content) return;
   const turnKey = payload.content.trim();
-  if (lastProcessedTurnContent === turnKey) return; // Prevent double trigger
+  if (lastProcessedTurnContent === turnKey) {
+    if (!isAudioPlaying) {
+      isProcessingTurn = false;
+    }
+    return;
+  }
   lastProcessedTurnContent = turnKey;
 
   // Guarantee transcript bubble is rendered in chat!
@@ -344,13 +349,24 @@ function playAudioBase64(base64Data, onEndCallback, turnContent = "", agentId = 
     }
 
     let endedCalled = false;
+    let safetyWatchdog = null;
+
     const callEndOnce = () => {
       if (!endedCalled) {
         endedCalled = true;
+        if (safetyWatchdog) clearTimeout(safetyWatchdog);
         isAudioPlaying = false;
         if (onEndCallback) onEndCallback();
       }
     };
+
+    // Safety watchdog: guarantee turn advances even if audio element stalls
+    safetyWatchdog = setTimeout(() => {
+      if (!endedCalled) {
+        console.warn("Safety watchdog advancing turn");
+        callEndOnce();
+      }
+    }, 12000);
 
     audioPlayer.onended = callEndOnce;
     audioPlayer.onpause = () => {
@@ -642,7 +658,7 @@ async function toggleAutonomousDebate() {
         </svg>
       `;
     }
-    await startLiveHandsFreeListening();
+    startLiveHandsFreeListening().catch(e => console.warn("Mic init notice:", e));
     triggerNextTurn();
   } else {
     if (startBtn) startBtn.classList.remove("running");

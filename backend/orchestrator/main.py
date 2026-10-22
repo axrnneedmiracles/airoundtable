@@ -59,12 +59,15 @@ active_connections: List[WebSocket] = []
 
 async def broadcast_event(event_type: str, data: Any):
     payload = {"type": event_type, "data": data}
+    dead = []
     for conn in list(active_connections):
         try:
-            await conn.send_json(payload)
+            await asyncio.wait_for(conn.send_json(payload), timeout=1.5)
         except Exception:
-            if conn in active_connections:
-                active_connections.remove(conn)
+            dead.append(conn)
+    for d in dead:
+        if d in active_connections:
+            active_connections.remove(d)
 
 def get_last_speaker_id() -> Optional[str]:
     """Finds the last valid panelist who spoke from active state or history."""
@@ -247,6 +250,7 @@ async def stop_podcast():
 @app.post("/api/turn/trigger")
 async def trigger_turn(target_agent: Optional[str] = None):
     """Executes a round-table turn using A2A negotiation, episodic memory, and ElevenLabs voice synthesis."""
+    # 1. State resolution inside short critical section
     async with ROUNDTABLE_LOCK:
         agent_cycle = ["host", "technologist", "ethicist"]
         last_agent = get_last_speaker_id()
@@ -284,84 +288,89 @@ async def trigger_turn(target_agent: Optional[str] = None):
 
         persona = PERSONAS[target_agent]
         PODCAST_STATE["active_speaker"] = persona.agent_id
+        history_snapshot = list(PODCAST_STATE["history"])
+        topic_snapshot = PODCAST_STATE["topic"]
 
-        # 1. Log and Broadcast A2A Message Trace
-        battleground = topic_engine.get_current_battleground()
-        a2a_msg = A2AMessage(
-            sender_id=last_agent or "moderator",
-            receiver_id=persona.agent_id,
-            intent=a2a_intent,
-            dimension=dimension,
-            claim_summary=claim,
-            priority=0.85
-        )
-        coordinator.record_message(a2a_msg)
-        PODCAST_STATE["a2a_traces"].append(a2a_msg.to_dict())
-        await broadcast_event("a2a_trace", a2a_msg.to_dict())
+    # 2. Log and Broadcast A2A Message Trace
+    battleground = topic_engine.get_current_battleground()
+    a2a_msg = A2AMessage(
+        sender_id=last_agent or "moderator",
+        receiver_id=persona.agent_id,
+        intent=a2a_intent,
+        dimension=dimension,
+        claim_summary=claim,
+        priority=0.85
+    )
+    coordinator.record_message(a2a_msg)
+    PODCAST_STATE["a2a_traces"].append(a2a_msg.to_dict())
+    await broadcast_event("a2a_trace", a2a_msg.to_dict())
 
-        # 2. Assemble Structured Episodic Memory Context
-        memory_ctx = memory_engine.get_structured_context(
-            target_persona_id=persona.agent_id,
-            current_dimension=dimension,
-            max_verbatim_turns=8
-        )
+    # 3. Assemble Structured Episodic Memory Context
+    memory_ctx = memory_engine.get_structured_context(
+        target_persona_id=persona.agent_id,
+        current_dimension=dimension,
+        max_verbatim_turns=8
+    )
 
-        # 3. Generate Agent Response with Episodic Memory & Novelty Directives
-        novelty_rules = topic_engine.get_novelty_directives()
-        text_response = await generate_agent_response(
-            persona=persona,
-            history=PODCAST_STATE["history"],
-            topic=PODCAST_STATE["topic"],
-            battleground=battleground,
-            novelty_directives=novelty_rules,
-            memory_context=memory_ctx
-        )
+    # 4. Generate Agent Response with Episodic Memory & Novelty Directives
+    novelty_rules = topic_engine.get_novelty_directives()
+    text_response = await generate_agent_response(
+        persona=persona,
+        history=history_snapshot,
+        topic=topic_snapshot,
+        battleground=battleground,
+        novelty_directives=novelty_rules,
+        memory_context=memory_ctx
+    )
 
-        # Record in Memory Engine & Topic Engine
-        topic_engine.record_claim(text_response[:80])
-        memory_engine.record_turn(
-            speaker_id=persona.agent_id,
-            speaker_name=persona.name,
-            role=persona.role,
-            content=text_response,
-            dimension=dimension
-        )
+    # Record in Memory Engine & Topic Engine
+    topic_engine.record_claim(text_response[:80])
+    memory_engine.record_turn(
+        speaker_id=persona.agent_id,
+        speaker_name=persona.name,
+        role=persona.role,
+        content=text_response,
+        dimension=dimension
+    )
 
-        turn_data = {
-            "agent_id": persona.agent_id,
-            "sender": persona.name,
-            "role": persona.role,
-            "content": text_response
-        }
+    turn_data = {
+        "agent_id": persona.agent_id,
+        "sender": persona.name,
+        "role": persona.role,
+        "content": text_response
+    }
+    
+    async with ROUNDTABLE_LOCK:
         PODCAST_STATE["history"].append(turn_data)
-        await broadcast_event("turn_started", turn_data)
 
-        # 4. ElevenLabs Voice Synthesis (with graceful modulated fallback)
-        audio_bytes = b""
-        audio_base64 = ""
-        try:
-            audio_bytes = await synthesize(
-                text=text_response,
-                voice_id=persona.voice_id,
-                agent_id=persona.agent_id
-            )
-            if audio_bytes:
-                audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
-        except Exception as e:
-            print(f"Synthesis warning: {e}")
+    await broadcast_event("turn_started", turn_data)
 
-        payload = {
-            **turn_data,
-            "has_audio": len(audio_bytes) > 0,
-            "audio_base64": audio_base64
-        }
-        await broadcast_event("turn_completed", payload)
+    # 5. ElevenLabs Voice Synthesis (with graceful modulated fallback)
+    audio_bytes = b""
+    audio_base64 = ""
+    try:
+        audio_bytes = await synthesize(
+            text=text_response,
+            voice_id=persona.voice_id,
+            agent_id=persona.agent_id
+        )
+        if audio_bytes:
+            audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+    except Exception as e:
+        print(f"Synthesis warning: {e}")
 
-        return {
-            "turn": turn_data,
-            "audio_base64": audio_base64,
-            "audio_length": len(audio_bytes)
-        }
+    payload = {
+        **turn_data,
+        "has_audio": len(audio_bytes) > 0,
+        "audio_base64": audio_base64
+    }
+    await broadcast_event("turn_completed", payload)
+
+    return {
+        "turn": turn_data,
+        "audio_base64": audio_base64,
+        "audio_length": len(audio_bytes)
+    }
 
 @app.post("/api/interrupt")
 async def handle_human_interruption(
@@ -370,27 +379,27 @@ async def handle_human_interruption(
     target_agent: Optional[str] = Form(None)
 ):
     """Handles real-time barge-in interruption with instant audio cutoff, robust STT, and memory-aware response."""
+    interruption_text = (text or "").strip()
+    if not interruption_text and file:
+        try:
+            audio_bytes = await file.read()
+            interruption_text = await call_whisper(audio_bytes)
+        except Exception as e:
+            print(f"STT extraction notice: {e}")
+            interruption_text = ""
+
+    interruption_text = interruption_text.strip()
+    if not interruption_text or len(interruption_text) < 2:
+        return {
+            "status": "silence",
+            "interruption": interruption_text,
+            "message": "No clear speech detected. Speak clearly into the microphone or type below.",
+            "response": None
+        }
+
+    lower_text = interruption_text.lower()
+
     async with ROUNDTABLE_LOCK:
-        interruption_text = (text or "").strip()
-        if not interruption_text and file:
-            try:
-                audio_bytes = await file.read()
-                interruption_text = await call_whisper(audio_bytes)
-            except Exception as e:
-                print(f"STT extraction notice: {e}")
-                interruption_text = ""
-
-        interruption_text = interruption_text.strip()
-        if not interruption_text or len(interruption_text) < 2:
-            return {
-                "status": "silence",
-                "interruption": interruption_text,
-                "message": "No clear speech detected. Speak clearly into the microphone or type below.",
-                "response": None
-            }
-
-        lower_text = interruption_text.lower()
-
         # Check for rapid duplicate interruption within last 2 turns
         for recent in reversed(PODCAST_STATE.get("history", [])[-2:]):
             if recent.get("sender") == "Audience (Human)":
@@ -436,6 +445,8 @@ async def handle_human_interruption(
             "isInterruption": True
         }
         PODCAST_STATE["history"].append(user_turn)
+        history_snapshot = list(PODCAST_STATE["history"])
+        topic_snapshot = PODCAST_STATE["topic"]
 
         # Record in Memory Engine
         memory_engine.record_turn(
@@ -459,76 +470,78 @@ async def handle_human_interruption(
         coordinator.record_message(a2a_interrupt_msg)
         PODCAST_STATE["a2a_traces"].append(a2a_interrupt_msg.to_dict())
 
-        # 2. Broadcast Interruption Event (< 20ms cutoff for active audio)
-        await broadcast_event("human_interruption", {
-            "text": interruption_text,
-            "routed_to": persona.name,
-            "agent_id": persona.agent_id
-        })
-        await broadcast_event("a2a_trace", a2a_interrupt_msg.to_dict())
+    # 2. Broadcast Interruption Event (< 20ms cutoff for active audio)
+    await broadcast_event("human_interruption", {
+        "text": interruption_text,
+        "routed_to": persona.name,
+        "agent_id": persona.agent_id
+    })
+    await broadcast_event("a2a_trace", a2a_interrupt_msg.to_dict())
 
-        # 3. Assemble Episodic Memory Context for Interruption
-        memory_ctx = memory_engine.get_structured_context(
-            target_persona_id=persona.agent_id,
-            current_dimension="Audience Interruption",
-            user_interruption=interruption_text,
-            max_verbatim_turns=8
-        )
+    # 3. Assemble Episodic Memory Context for Interruption
+    memory_ctx = memory_engine.get_structured_context(
+        target_persona_id=persona.agent_id,
+        current_dimension="Audience Interruption",
+        user_interruption=interruption_text,
+        max_verbatim_turns=8
+    )
 
-        # 4. Generate Agent Answer Directly Grounded in the Listener's Question & History
-        battleground = topic_engine.get_current_battleground()
-        response_text = await generate_agent_response(
-            persona=persona,
-            history=PODCAST_STATE["history"],
-            topic=PODCAST_STATE["topic"],
-            battleground=battleground,
-            user_interruption=interruption_text,
-            memory_context=memory_ctx
-        )
+    # 4. Generate Agent Answer Directly Grounded in the Listener's Question & History
+    battleground = topic_engine.get_current_battleground()
+    response_text = await generate_agent_response(
+        persona=persona,
+        history=history_snapshot,
+        topic=topic_snapshot,
+        battleground=battleground,
+        user_interruption=interruption_text,
+        memory_context=memory_ctx
+    )
 
-        # Record Response in Memory Engine
-        memory_engine.record_turn(
-            speaker_id=persona.agent_id,
-            speaker_name=persona.name,
-            role=persona.role,
-            content=response_text,
-            dimension="Audience Q&A Response"
-        )
+    # Record Response in Memory Engine
+    memory_engine.record_turn(
+        speaker_id=persona.agent_id,
+        speaker_name=persona.name,
+        role=persona.role,
+        content=response_text,
+        dimension="Audience Q&A Response"
+    )
 
-        turn_data = {
-            "agent_id": persona.agent_id,
-            "sender": persona.name,
-            "role": persona.role,
-            "content": response_text
-        }
+    turn_data = {
+        "agent_id": persona.agent_id,
+        "sender": persona.name,
+        "role": persona.role,
+        "content": response_text
+    }
+    async with ROUNDTABLE_LOCK:
         PODCAST_STATE["history"].append(turn_data)
-        await broadcast_event("turn_started", turn_data)
 
-        # 5. Synthesize Spoken Answer
-        audio_base64 = ""
-        try:
-            audio_bytes = await synthesize(
-                text=response_text,
-                voice_id=persona.voice_id,
-                agent_id=persona.agent_id
-            )
-            if audio_bytes:
-                audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
-        except Exception as e:
-            print(f"Interruption synthesis error: {e}")
+    await broadcast_event("turn_started", turn_data)
 
-        turn_data["audio_base64"] = audio_base64
-        payload = {
-            **turn_data,
-            "is_interruption_response": True
-        }
-        await broadcast_event("turn_completed", payload)
+    # 5. Synthesize Spoken Answer
+    audio_base64 = ""
+    try:
+        audio_bytes = await synthesize(
+            text=response_text,
+            voice_id=persona.voice_id,
+            agent_id=persona.agent_id
+        )
+        if audio_bytes:
+            audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+    except Exception as e:
+        print(f"Interruption synthesis error: {e}")
 
-        return {
-            "interruption": interruption_text,
-            "response": turn_data,
-            "audio_base64": audio_base64
-        }
+    turn_data["audio_base64"] = audio_base64
+    payload = {
+        **turn_data,
+        "is_interruption_response": True
+    }
+    await broadcast_event("turn_completed", payload)
+
+    return {
+        "interruption": interruption_text,
+        "response": turn_data,
+        "audio_base64": audio_base64
+    }
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):

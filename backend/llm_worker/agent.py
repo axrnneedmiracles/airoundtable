@@ -13,6 +13,7 @@ Supports:
 """
 import os
 import re
+import time
 from typing import List, Dict, Any, Optional
 import httpx
 from persona_store.models import Persona, get_persona
@@ -138,12 +139,32 @@ def build_procedural_turn(
                 f"the immense profits flow to private developers while the collective society is left to absorb the externalities."
             )
 
+_last_ollama_check_time = 0.0
+_ollama_online = False
+
+async def is_ollama_available(host: str = OLLAMA_HOST) -> bool:
+    """Fast non-blocking check whether local Ollama is active."""
+    global _last_ollama_check_time, _ollama_online
+    now = time.time()
+    if (now - _last_ollama_check_time) < 30.0:
+        return _ollama_online
+    _last_ollama_check_time = now
+    try:
+        async with httpx.AsyncClient(timeout=0.4) as client:
+            resp = await client.get(f"{host.rstrip('/')}/api/tags")
+            _ollama_online = (resp.status_code == 200)
+    except Exception:
+        _ollama_online = False
+    return _ollama_online
+
 async def call_ollama(
     messages: List[Dict[str, str]],
     model_name: str = OLLAMA_MODEL,
     host: str = OLLAMA_HOST
 ) -> Optional[str]:
     """Attempts generation via local Ollama."""
+    if not await is_ollama_available(host):
+        return None
     models_to_try = [model_name]
     if "3.2:3b" in model_name:
         models_to_try.append("llama3.2:1b")
