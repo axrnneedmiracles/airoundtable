@@ -2,11 +2,12 @@
 """Multi-Provider Resilient Speech-to-Text (STT) Engine.
 
 Supports:
-1. Groq Cloud Whisper API (whisper-large-v3-turbo - ultra-fast < 250ms transcription)
-2. OpenAI Cloud Whisper API (whisper-1)
-3. Local Whisper.cpp server (http://127.0.0.1:8080/inference)
-4. Robust FFmpeg 16kHz PCM audio normalization and RMS energy validation
-5. Hallucination filter and graceful offline fallback without unhandled 500 crashes
+1. Native 16kHz WAV direct decoding (no ffmpeg dependency required)
+2. Google Speech Recognition via Python `speech_recognition` (100% free, no API key needed)
+3. Groq Cloud Whisper API (whisper-large-v3-turbo - ultra-fast < 250ms)
+4. OpenAI Cloud Whisper API (whisper-1)
+5. Local Whisper.cpp server (http://127.0.0.1:8080/inference)
+6. Dynamic speech energy validation and post-transcription hallucination cleaner
 """
 import os
 import io
@@ -75,22 +76,26 @@ def clean_whisper_text(raw_text: str) -> str:
     if lower in KNOWN_HALLUCINATIONS or not lower:
         return ""
 
-    # Reject if only punctuation or single words that are common filler
+    # Reject if only single filler letters
     words = [w for w in re.findall(r'\b\w+\b', clean) if len(w) > 1]
-    if len(words) < 2 and not any(k in lower for k in ["charlie", "roger", "sarah", "transit", "fleet", "safety", "tech", "scale", "why", "how", "what", "wait", "stop"]):
+    if len(words) < 1:
         return ""
 
     return clean.strip()
 
+def is_wav_audio(audio_bytes: bytes) -> bool:
+    """Checks whether the raw byte stream has a valid RIFF WAVE header."""
+    return len(audio_bytes) > 12 and audio_bytes[:4] == b"RIFF" and audio_bytes[8:12] == b"WAVE"
+
 def check_pcm_speech_energy(wav_bytes: bytes) -> bool:
-    """Verifies that 16kHz WAV has sufficient speech energy (RMS) to be real vocal input."""
+    """Verifies that 16kHz WAV has sufficient vocal energy to be speech."""
     try:
         with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
             n_frames = wf.getnframes()
             rate = wf.getframerate()
             duration = n_frames / float(rate)
-            # Must be at least 0.45s of audio
-            if duration < 0.45:
+            # Accept any audio over 0.25 seconds
+            if duration < 0.25:
                 return False
             frames = wf.readframes(n_frames)
             count = len(frames) // 2
@@ -99,14 +104,21 @@ def check_pcm_speech_energy(wav_bytes: bytes) -> bool:
             shorts = struct.unpack(f"{count}h", frames)
             sum_sq = sum(s * s for s in shorts)
             rms = math.sqrt(sum_sq / count)
-            # In 16-bit PCM, room silence is < 100 RMS. Natural human voice is usually 300 - 8000 RMS.
-            return rms >= 140
+            # Low threshold (60) to avoid discarding quiet speakers or soft mics
+            return rms >= 60
     except Exception as e:
-        print(f"Energy check notice: {e}")
         return True
 
 def convert_to_whisper_wav(raw_audio: bytes) -> Optional[bytes]:
-    """Convert any audio format to clean 16kHz mono 16-bit PCM WAV preserving natural voice dynamics."""
+    """Ensures audio is clean 16kHz mono 16-bit PCM WAV.
+    If already WAV, returns it directly without needing external ffmpeg.
+    """
+    if is_wav_audio(raw_audio):
+        if not check_pcm_speech_energy(raw_audio):
+            return None
+        return raw_audio
+
+    # If non-WAV format (e.g. webm/ogg) and ffmpeg is installed, attempt conversion
     with tempfile.NamedTemporaryFile(suffix=".input", delete=False) as in_f:
         in_f.write(raw_audio)
         in_path = in_f.name
@@ -128,8 +140,8 @@ def convert_to_whisper_wav(raw_audio: bytes) -> Optional[bytes]:
             return cleaned_wav
         else:
             return raw_audio
-    except Exception as e:
-        print(f"Audio conversion warning: {e}")
+    except Exception:
+        # ffmpeg not available on system, return raw bytes
         return raw_audio
     finally:
         for p in (in_path, out_path):
@@ -138,6 +150,27 @@ def convert_to_whisper_wav(raw_audio: bytes) -> Optional[bytes]:
                     os.remove(p)
                 except OSError:
                     pass
+
+def transcribe_with_google_sr(wav_bytes: bytes) -> Optional[str]:
+    """Transcribes audio using Google Speech Recognition via speech_recognition package.
+    Runs free with zero API keys required.
+    """
+    try:
+        import speech_recognition as sr
+        r = sr.Recognizer()
+        r.energy_threshold = 80
+        r.dynamic_energy_threshold = True
+        with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
+            audio_data = r.record(source)
+        recognized = r.recognize_google(audio_data, language="en-US")
+        clean = clean_whisper_text(recognized)
+        if clean and len(clean) > 1:
+            print(f"[STT] Google Speech successfully recognized: \"{clean}\"")
+            return clean
+    except Exception as e:
+        # Expected if audio is silence (UnknownValueError) or network unreachable
+        pass
+    return None
 
 async def call_groq_whisper(wav_bytes: bytes, api_key: str) -> Optional[str]:
     """Transcribes audio using Groq Cloud Whisper API (whisper-large-v3-turbo)."""
@@ -187,16 +220,14 @@ async def call_local_whisper_cpp(wav_bytes: bytes, server_url: str) -> Optional[
                 result = resp.json()
                 raw = result.get("text", "").strip()
                 return clean_whisper_text(raw)
-    except Exception as e:
-        # Expected if local whisper.cpp is not running
+    except Exception:
         pass
     return None
 
 async def call_whisper(audio_bytes: bytes) -> str:
-    """Send noise-reduced audio to available Whisper STT providers with multi-tier fallback."""
+    """Send audio to multi-tier STT providers with automatic fallback."""
     wav_16k = convert_to_whisper_wav(audio_bytes)
     if not wav_16k:
-        # Filtered out as background noise or silence
         return ""
 
     # Tier 1: Groq Whisper API (fastest, ultra-low latency < 250ms)
@@ -219,5 +250,9 @@ async def call_whisper(audio_bytes: bytes) -> str:
     if text:
         return text
 
-    # All STT providers unavailable or offline
+    # Tier 4: Built-in Google Speech Recognition via speech_recognition (0-cost, no key required)
+    text = transcribe_with_google_sr(wav_16k)
+    if text:
+        return text
+
     return ""

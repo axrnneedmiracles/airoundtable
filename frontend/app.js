@@ -925,6 +925,60 @@ function stopAndSendRecording() {
       console.warn("Recorder stop note:", e);
     }
   }
+
+  // Trigger PCM WAV dispatch
+  if (typeof window._dispatchVoiceInterruption === "function") {
+    setTimeout(window._dispatchVoiceInterruption, 100);
+  }
+}
+
+let pcmAudioSamples = [];
+let pcmProcessorNode = null;
+
+function encodePcmWavBlob(samples, sampleRate) {
+  const targetRate = 16000;
+  let downsampled;
+  if (sampleRate !== targetRate) {
+    const ratio = sampleRate / targetRate;
+    const newLen = Math.round(samples.length / ratio);
+    downsampled = new Float32Array(newLen);
+    for (let i = 0; i < newLen; i++) {
+      downsampled[i] = samples[Math.floor(i * ratio)] || 0;
+    }
+  } else {
+    downsampled = new Float32Array(samples);
+  }
+
+  const buffer = new ArrayBuffer(44 + downsampled.length * 2);
+  const view = new DataView(buffer);
+
+  function writeString(view, offset, string) {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  }
+
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + downsampled.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, 1, true); // Mono channel
+  view.setUint32(24, targetRate, true);
+  view.setUint32(28, targetRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true); // 16-bit
+  writeString(view, 36, 'data');
+  view.setUint32(40, downsampled.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < downsampled.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, downsampled[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+
+  return new Blob([view], { type: 'audio/wav' });
 }
 
 async function ensureMicStreamInitialized() {
@@ -953,51 +1007,40 @@ async function ensureMicStreamInitialized() {
     liveMicrophone = liveAudioContext.createMediaStreamSource(stream);
     liveMicrophone.connect(liveAnalyser);
 
-    const timeData = new Float32Array(liveAnalyser.fftSize);
-
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") 
-      ? "audio/webm;codecs=opus" 
-      : (MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/wav");
-
-    function setupRecorder() {
-      liveMediaRecorder = new MediaRecorder(stream, { mimeType });
-      liveAudioChunks = [];
-
-      liveMediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          liveAudioChunks.push(e.data);
+    // Direct in-browser PCM audio tap (produces pure 16kHz WAV without ffmpeg dependency)
+    try {
+      pcmProcessorNode = liveAudioContext.createScriptProcessor(4096, 1, 1);
+      pcmProcessorNode.onaudioprocess = (e) => {
+        if (!isSpeakingDetected && !isManualRecording) return;
+        const channel = e.inputBuffer.getChannelData(0);
+        for (let i = 0; i < channel.length; i++) {
+          pcmAudioSamples.push(channel[i]);
         }
       };
+      liveMicrophone.connect(pcmProcessorNode);
+      pcmProcessorNode.connect(liveAudioContext.destination);
+    } catch (e) {
+      console.warn("ScriptProcessor note:", e);
+    }
 
-      liveMediaRecorder.onstop = async () => {
-        const duration = Date.now() - recordingStartTime;
-        const spokenCandidate = liveRecognizedText.trim();
+    const timeData = new Float32Array(liveAnalyser.fftSize);
 
-        // Discard short audio (< 650ms) unless text was clearly recognized
-        if (!spokenCandidate && (liveAudioChunks.length === 0 || (duration < 650 && !isManualRecording))) {
-          if (micStatusText) {
-            micStatusText.textContent = micInputMode === "auto-vad" 
-              ? "🎙️ Ambient noise filtered" 
-              : "🎙️ Hold Spacebar or click mic to speak (Push-To-Talk)";
-          }
-          liveAudioChunks = [];
-          isProcessingTurn = false;
-          setOrbState("idle", null);
-          return;
-        }
+    function setupRecorder() {
+      // Dispatches when recording is concluded
+      window._dispatchVoiceInterruption = async () => {
+        const spokenCandidate = (liveRecognizedText || (interruptText ? interruptText.value : "")).trim();
+        const wavBlob = encodePcmWavBlob(pcmAudioSamples, liveAudioContext.sampleRate);
+        pcmAudioSamples = [];
 
-        const audioBlob = new Blob(liveAudioChunks, { type: mimeType });
-        liveAudioChunks = [];
-
-        if ((spokenCandidate || audioBlob.size > 400) && !isInterruptionInFlight) {
+        if ((spokenCandidate || wavBlob.size > 2000) && !isInterruptionInFlight) {
           isInterruptionInFlight = true;
           if (micStatusText) micStatusText.textContent = "⚡ Routing question to panelist...";
           const formData = new FormData();
           if (spokenCandidate) {
             formData.append("text", spokenCandidate);
           }
-          if (audioBlob.size > 100) {
-            formData.append("file", audioBlob, "interruption.webm");
+          if (wavBlob.size > 1000) {
+            formData.append("file", wavBlob, "interruption.wav");
           }
           const target = interruptTarget ? interruptTarget.value : "all";
           if (target !== "all") formData.append("target_agent", target);
@@ -1010,15 +1053,13 @@ async function ensureMicStreamInitialized() {
             });
             const data = await res.json();
             if (data.status === "silence" || !data.response || !data.response.content) {
-              if (micStatusText) micStatusText.textContent = "🎙️ Filtered: No speech detected.";
+              if (micStatusText) micStatusText.textContent = "🎙️ Filtered: Speak closer to mic or type challenge.";
               isInterruptionInFlight = false;
               isProcessingTurn = false;
               setOrbState("idle", null);
               setTimeout(() => {
                 if (micStatusText) {
-                  micStatusText.textContent = micInputMode === "auto-vad"
-                    ? "🎙️ Hands-Free VAD Active — Speak clearly above noise gate!"
-                    : "🎙️ Hold Spacebar or click mic to speak (Push-To-Talk)";
+                  micStatusText.textContent = "🎙️ Click Mic or hold Spacebar to speak anytime!";
                 }
               }, 2000);
               return;
@@ -1039,7 +1080,7 @@ async function ensureMicStreamInitialized() {
             isProcessingTurn = false;
             setOrbState("idle", null);
           } finally {
-            setTimeout(() => { isInterruptionInFlight = false; }, 2000);
+            setTimeout(() => { isInterruptionInFlight = false; }, 1500);
           }
         } else {
           isProcessingTurn = false;
@@ -1118,41 +1159,49 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
-// Mic Button: Supports both Click to Toggle and Hold to Talk!
-let micBtnHoldTimer = null;
+// Clean Mic Button Controller (Click to Talk / Click to Stop & Send)
 if (micBtn) {
-  micBtn.addEventListener("mousedown", async (e) => {
-    e.stopPropagation();
-    await ensureMicStreamInitialized();
-    micBtnHoldTimer = setTimeout(() => {
-      // User is holding down the button
-      if (!isManualRecording) {
-        startRecordingSession(true);
-      }
-    }, 200);
-  });
-
-  micBtn.addEventListener("mouseup", (e) => {
-    e.stopPropagation();
-    if (micBtnHoldTimer) {
-      clearTimeout(micBtnHoldTimer);
-      micBtnHoldTimer = null;
-    }
-    if (isManualRecording) {
-      stopAndSendRecording();
-    }
-  });
-
   micBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
     await ensureMicStreamInitialized();
     if (isSpeakingDetected || isManualRecording) {
+      // Already recording -> Finish & send!
       stopAndSendRecording();
     } else {
+      // Start recording vocal input!
       startRecordingSession(true);
     }
   });
 }
+
+// Start Complete New Conversation Action
+async function startNewConversation(customTopic = null) {
+  const currentTopic = currentTopicEl ? currentTopicEl.textContent.trim() : "";
+  const confirmed = confirm(`Start a completely new conversation?\n\nThis will reset the entire memory engine, claims ledger, and transcript for a fresh debate on:\n"${customTopic || currentTopic}"`);
+  if (!confirmed) return;
+
+  const topicToUse = customTopic || currentTopic;
+  try {
+    const fd = new FormData();
+    if (topicToUse) fd.append("topic", topicToUse);
+    const res = await fetch(`${API_BASE}/api/conversation/new`, { method: "POST", body: fd });
+    const data = await res.json();
+    clearChatUI();
+    if (data.topic && currentTopicEl) {
+      currentTopicEl.textContent = data.topic;
+    }
+    if (micStatusText) {
+      micStatusText.textContent = "✨ Fresh conversation started! Click Start or speak into mic.";
+    }
+  } catch (err) {
+    console.error("New conversation error:", err);
+  }
+}
+
+const topbarNewConvoBtn = document.getElementById("topbar-new-convo-btn");
+const newConvoBtn = document.getElementById("new-convo-btn");
+if (topbarNewConvoBtn) topbarNewConvoBtn.addEventListener("click", () => startNewConversation());
+if (newConvoBtn) newConvoBtn.addEventListener("click", () => startNewConversation());
 
 // Master Controls
 if (startBtn) startBtn.addEventListener("click", toggleAutonomousDebate);

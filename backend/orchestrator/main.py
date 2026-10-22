@@ -204,6 +204,33 @@ async def clear_history():
     await broadcast_event("history_cleared", {"status": "cleared"})
     return {"status": "cleared", "history": []}
 
+@app.post("/api/conversation/new")
+async def start_new_conversation(topic: Optional[str] = Form(None)):
+    """Starts a completely fresh roundtable conversation, clearing all memory, claims, traces, and state."""
+    global topic_engine, memory_engine
+    new_topic = (topic or "").strip() or PODCAST_STATE.get("topic", DEFAULT_TOPIC)
+
+    PODCAST_STATE["topic"] = new_topic
+    PODCAST_STATE["history"] = []
+    PODCAST_STATE["a2a_traces"] = []
+    PODCAST_STATE["active_speaker"] = None
+    PODCAST_STATE["audio_queue"] = []
+    PODCAST_STATE["is_running"] = False
+
+    coordinator.clear()
+    memory_engine.clear()
+    memory_engine.set_topic(new_topic, clear_history=True)
+    topic_engine = TopicEngine(new_topic)
+
+    payload = {
+        "status": "ok",
+        "topic": new_topic,
+        "message": "New conversation initialized."
+    }
+    await broadcast_event("new_conversation", payload)
+    await broadcast_event("history_cleared", {"topic": new_topic, "status": "cleared"})
+    return payload
+
 @app.post("/api/podcast/start")
 async def start_podcast():
     PODCAST_STATE["is_running"] = True
@@ -354,15 +381,15 @@ async def handle_human_interruption(
                 interruption_text = ""
 
         interruption_text = interruption_text.strip()
-        words = interruption_text.split()
-        lower_text = interruption_text.lower()
-        if not interruption_text or len(interruption_text) < 4 or (len(words) < 2 and not any(k in lower_text for k in ["charlie", "roger", "sarah", "why", "how", "what", "stop", "wait"])):
+        if not interruption_text or len(interruption_text) < 2:
             return {
                 "status": "silence",
                 "interruption": interruption_text,
-                "message": "No clear speech detected or ambient noise filtered",
+                "message": "No clear speech detected. Speak clearly into the microphone or type below.",
                 "response": None
             }
+
+        lower_text = interruption_text.lower()
 
         # Check for rapid duplicate interruption within last 2 turns
         for recent in reversed(PODCAST_STATE.get("history", [])[-2:]):
