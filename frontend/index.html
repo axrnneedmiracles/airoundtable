@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ElevenLabs UI — Real-Time Multi-Agent AI Roundtable</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- ElevenLabs Minimal Topbar Navigation -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <rect x="7" y="4" width="3" height="16" rx="1.5" fill="#FFFFFF"/>
+          <rect x="14" y="4" width="3" height="16" rx="1.5" fill="#FFFFFF"/>
+        </svg>
+      </div>
+      <div class="studio-title-group">
+        <span class="studio-name">ElevenLabs AI Roundtable</span>
+        <span class="studio-badge">Real-Time Multi-Agent Podcast</span>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <div class="status-pill">
+        <span class="live-dot-red"></span>
+        <span id="session-status">128 kbps • Live Studio</span>
+      </div>
+      <div class="status-pill secondary">
+        <span>A2A Protocol v1.0</span>
+      </div>
+      <button class="icon-btn" id="theme-btn" title="Toggle Mode">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20Z" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 3-Column Studio Dashboard Grid -->
+  <main class="dashboard-grid">
+
+    <!-- Column 1 (Left): Active Speaker Orb & The 3 Roundtable Panelists -->
+    <div class="grid-col col-1">
+      
+      <!-- Card 1: Signature ElevenLabs Flower Petal Orb -->
+      <div class="el-card orb-card">
+        <div class="card-title-bar">
+          <div>
+            <div class="card-title">Active Speaker Orb</div>
+            <div class="card-subtitle">Real-time voice state visualization</div>
+          </div>
+          <span class="badge-tag" id="current-active-tag">IDLE</span>
+        </div>
+
+        <div class="orb-container">
+          <div class="eleven-orb" id="main-orb">
+            <div class="orb-inner">
+              <div class="petal p1"></div>
+              <div class="petal p2"></div>
+              <div class="petal p3"></div>
+              <div class="petal p4"></div>
+            </div>
+            <div class="orb-glow"></div>
+          </div>
+          <div class="orb-meta">
+            <h3 id="orb-speaker-name">AI Roundtable</h3>
+            <p id="orb-speaker-role">Ready to Broadcast</p>
+          </div>
+        </div>
+
+        <!-- State Pills: Idle | Thinking | Talking -->
+        <div class="state-pills">
+          <button class="state-pill active" id="pill-idle">Idle</button>
+          <button class="state-pill" id="pill-listening">Thinking</button>
+          <button class="state-pill" id="pill-talking">Talking</button>
+        </div>
+
+        <!-- Interruption Target Selector -->
+        <div class="voice-picker">
+          <div class="voice-avatar-icon">
+            <div class="mini-orb-glyph"></div>
+          </div>
+          <select id="interrupt-target">
+            <option value="all">Auto-Route Interruption by Name</option>
+            <option value="host">Direct to Sarah (Host)</option>
+            <option value="technologist">Direct to Charlie (Accelerationist)</option>
+            <option value="ethicist">Direct to Roger (Safety Scholar)</option>
+          </select>
+          <div class="picker-caret">↕</div>
+        </div>
+      </div>
+
+      <!-- Card 2: The 3 Roundtable Panelists -->
+      <div class="el-card roster-card">
+        <div class="card-title-bar">
+          <div>
+            <div class="card-title">Roundtable Panelists</div>
+            <div class="card-subtitle">Autonomous AI Personas</div>
+          </div>
+          <span class="badge-tag">3 Agents</span>
+        </div>
+
+        <div class="panelist-list">
+          <!-- Sarah -->
+          <div class="panelist-item" id="panelist-host">
+            <div class="panelist-avatar host-bg">
+              <span>S</span>
+            </div>
+            <div class="panelist-info">
+              <div class="panelist-name-row">
+                <span class="panelist-name">Sarah</span>
+                <span class="voice-badge">Rachel (ElevenLabs)</span>
+              </div>
+              <span class="panelist-role">Host, Moderator & Fact-Checker</span>
+            </div>
+            <div class="speaking-indicator"></div>
+          </div>
+
+          <!-- Charlie -->
+          <div class="panelist-item" id="panelist-technologist">
+            <div class="panelist-avatar tech-bg">
+              <span>C</span>
+            </div>
+            <div class="panelist-info">
+              <div class="panelist-name-row">
+                <span class="panelist-name">Charlie</span>
+                <span class="voice-badge">Charlie (ElevenLabs)</span>
+              </div>
+              <span class="panelist-role">Open-Weights Accelerationist Hacker</span>
+            </div>
+            <div class="speaking-indicator"></div>
+          </div>
+
+          <!-- Roger -->
+          <div class="panelist-item" id="panelist-ethicist">
+            <div class="panelist-avatar ethic-bg">
+              <span>R</span>
+            </div>
+            <div class="panelist-info">
+              <div class="panelist-name-row">
+                <span class="panelist-name">Roger</span>
+                <span class="voice-badge">Roger (ElevenLabs)</span>
+              </div>
+              <span class="panelist-role">AI Safety & Governance Scholar</span>
+            </div>
+            <div class="speaking-indicator"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Column 2 (Center): Studio Deck, Controls & Live Dialogue Feed -->
+    <div class="grid-col col-2">
+      
+      <!-- Studio Control Deck Card -->
+      <div class="el-card studio-deck">
+        <div class="deck-header">
+          <div class="deck-track-id">ROUNDTABLE TOPIC</div>
+          <div class="deck-header-actions">
+            <button class="pill-btn-small" id="change-topic-btn" title="Type any custom debate topic">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              <span>Custom Topic</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="topic-heading">
+          <h2 id="current-topic">The Future of Open-Source AI: Acceleration vs Responsible Governance</h2>
+        </div>
+
+        <!-- Curated Topics Preset Bar -->
+        <div class="topic-presets-container">
+          <div class="presets-label">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <span>Choose from Curated Debate Topics:</span>
+          </div>
+          <div class="topic-presets-scroll" id="topic-presets-list">
+            <!-- Dynamically populated from /api/topics -->
+          </div>
+        </div>
+
+        <!-- Master Control Action Bar -->
+        <div class="studio-action-row">
+          <button class="btn-primary-studio" id="start-btn">
+            <span class="btn-icon" id="start-btn-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="6 4 18 12 6 20 6 4"/>
+              </svg>
+            </span>
+            <span id="start-btn-text">Start Autonomous Roundtable</span>
+          </button>
+
+          <button class="btn-secondary-studio" id="next-turn-btn" title="Advance to the next speaker">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
+            </svg>
+            <span>Next Speaker</span>
+          </button>
+        </div>
+
+        <!-- Live Audio Scrubber & Waveform Bar -->
+        <div class="audio-monitor-row">
+          <div class="waveform-mini-visual" id="waveform-bars">
+            <span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span>
+            <span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span>
+            <span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span>
+            <span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span>
+            <span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span><span class="w-bar"></span>
+          </div>
+
+          <div class="deck-scrubber">
+            <div class="scrub-track">
+              <div class="scrub-progress" id="playback-progress" style="width: 0%;"></div>
+            </div>
+            <div class="time-display">
+              <span id="current-time">0:00</span>
+              <span id="speaker-status-caption">Debate Inactive</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Dialogue Feed Card -->
+      <div class="el-card chat-card">
+        <div class="chat-header">
+          <div class="chat-header-left">
+            <span class="chat-title">Live Studio Transcript</span>
+            <span class="chat-subtitle">Real-time conversational turns & audience interventions</span>
+          </div>
+          <div class="chat-header-right">
+            <button class="pill-btn-small clear-btn" id="clear-history-btn" title="Clear conversation history for a fresh debate">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              <span>Clear History</span>
+            </button>
+            <span class="badge-tag" id="turn-count">0 Turns</span>
+          </div>
+        </div>
+
+        <!-- Message Feed (ElevenLabs Dark & White Capsules) -->
+        <div class="chat-messages" id="transcript-feed">
+          <!-- Dynamic turns populate here -->
+        </div>
+
+        <!-- Floating Scroll Down Arrow -->
+        <button class="scroll-bottom-btn" id="scroll-bottom-btn" title="Scroll to bottom">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 5v14M19 12l-7 7-7-7"/>
+          </svg>
+        </button>
+
+        <!-- Mic Status & Real-time Noise Gate Monitor -->
+        <div class="mic-status-banner" id="mic-status-container">
+          <div class="mic-status-top">
+            <div class="mic-status-left">
+              <span class="mic-dot" id="mic-live-dot"></span>
+              <span id="mic-status-text">🎙️ Auto-Detect Active — Just speak aloud anytime to interrupt</span>
+            </div>
+            <div class="mic-status-right">
+              <button class="mic-mode-pill vad-active" id="mic-mode-toggle" title="Click to toggle between Auto-Detect and Push-to-Talk">
+                Mode: Auto-Detect (Hands-Free)
+              </button>
+              <span class="mic-db" id="mic-energy-text">0%</span>
+            </div>
+          </div>
+          <div class="mic-meter-track" id="mic-meter-track">
+            <div class="mic-meter-fill" id="mic-meter-fill"></div>
+            <div class="mic-gate-marker" id="mic-gate-marker" title="Noise Gate Threshold (Audio below this is ignored as room noise)"></div>
+          </div>
+          <div class="mic-controls-row" id="mic-controls-row">
+            <span class="mic-hint-text">💡 Auto-Detect: Speak aloud anytime while agents talk to instantly interrupt them.</span>
+            <div class="gate-slider-wrap" id="gate-slider-wrap" style="display: flex;">
+              <span class="gate-label">VAD Gate: <strong id="gate-val">8%</strong></span>
+              <input type="range" id="gate-slider" min="4" max="25" value="8" title="Adjust noise gate sensitivity" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Interruption Input Bar -->
+        <div class="chat-input-bar">
+          <input type="text" id="interruption-text" placeholder="Type a question or challenge Charlie, Roger, Sarah..." autocomplete="off" />
+          <button class="chat-action-btn" id="send-interrupt-btn" title="Send text interruption">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+          <button class="chat-mic-btn" id="mic-btn" title="Click or Hold to Speak (Spacebar)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Column 3 (Right): Telemetry, A2A Protocol Stream & Engine Specs -->
+    <div class="grid-col col-3">
+      
+      <!-- Card 1: Live Audio Frequency Waveform Monitor -->
+      <div class="el-card monitor-card">
+        <div class="card-title-bar">
+          <div>
+            <div class="card-title">Voice Telemetry</div>
+            <div class="card-subtitle">Real-time STT & TTS pipeline</div>
+          </div>
+          <span class="live-pill"><span class="live-dot-red"></span> LIVE</span>
+        </div>
+
+        <div class="telemetry-wave-box" id="telemetry-box">
+          <div class="wave-lines-full">
+            <span class="t-line"></span><span class="t-line"></span><span class="t-line"></span><span class="t-line"></span>
+            <span class="t-line"></span><span class="t-line"></span><span class="t-line"></span><span class="t-line"></span>
+            <span class="t-line"></span><span class="t-line"></span><span class="t-line"></span><span class="t-line"></span>
+            <span class="t-line"></span><span class="t-line"></span><span class="t-line"></span><span class="t-line"></span>
+          </div>
+          <div class="wave-stat-row">
+            <span>Sample Rate: 16 kHz Mono</span>
+            <span class="text-emerald">whisper.cpp (Metal)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2: A2A Protocol Stream Trace -->
+      <div class="el-card a2a-card">
+        <div class="card-title-bar">
+          <div>
+            <div class="card-title">A2A Protocol Trace</div>
+            <div class="card-subtitle">Agent-to-Agent Coordination Bus</div>
+          </div>
+          <span class="badge-tag">IEEE Standardized</span>
+        </div>
+
+        <div class="a2a-stream" id="a2a-stream">
+          <div class="a2a-empty">A2A message frames will appear here during active dialogue.</div>
+        </div>
+      </div>
+
+      <!-- Card 3: System Engine Architecture -->
+      <div class="el-card specs-card">
+        <div class="card-title-bar">
+          <div class="card-title">System Architecture</div>
+        </div>
+        <div class="engine-metrics">
+          <div class="metric-row">
+            <span class="metric-key">Voice Layer</span>
+            <span class="metric-val text-white">ElevenLabs Flash v2.5</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-key">Speech-to-Text</span>
+            <span class="metric-val text-emerald">whisper.cpp (Apple Metal)</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-key">Reasoning LLM</span>
+            <span class="metric-val text-blue">Llama 3.2 3B (Ollama Local)</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-key">Interruption Latency</span>
+            <span class="metric-val text-amber">&lt; 180 ms</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-key">API Cost</span>
+            <span class="metric-val text-emerald">$0 STT / Local Open Weights</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <audio id="audio-player" style="display: none;"></audio>
+  <script src="/static/app.js"></script>
+</body>
+</html>
