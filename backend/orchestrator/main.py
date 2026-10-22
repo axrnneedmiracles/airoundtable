@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import base64
 import asyncio
@@ -372,6 +373,63 @@ async def trigger_turn(target_agent: Optional[str] = None):
         "audio_length": len(audio_bytes)
     }
 
+def extract_debate_start_intent(text: str) -> Optional[Dict[str, Any]]:
+    """Detects voice or text commands that intend to start/launch a debate.
+    
+    Returns:
+    - {"type": "new_topic", "topic": "..."} when a specific topic or controversy is given.
+    - {"type": "start_current"} when the command is simply to start/begin the debate.
+    - None if it's an audience question or normal interruption.
+    """
+    if not text:
+        return None
+    raw = text.strip()
+    cleaned = re.sub(
+        r"^(?:(?:hey|hi|hello|okay|alright|so|yo|sarah|charlie|roger|team|everyone|guys|antigravity|please)\b\s*[,!.]?\s*)+",
+        "",
+        raw,
+        flags=re.IGNORECASE
+    ).strip()
+
+    topic_patterns = [
+        # "let's start/begin/open/launch/have a [new] debate on/about/regarding <topic>"
+        r"^(?:let'?s\s+|please\s+|can\s+we\s+|could\s+we\s+|i\s+want\s+(?:to\s+)?(?:like\s+)?)?(?:start|begin|open|launch|have|do)\s+(?:a\s+)?(?:new\s+)?(?:roundtable\s+)?debate\s+(?:on|about|regarding)\s+(.+)$",
+        # "let's start/begin [a] debate <topic>" (e.g. "let's start debate should AI replace programmers")
+        r"^(?:let'?s\s+|please\s+|can\s+we\s+|could\s+we\s+)?(?:start|begin|open|launch|have)\s+(?:a\s+)?(?:new\s+)?debate\s+(.+)$",
+        # "let's debate on/about <topic>" or "debate on <topic>"
+        r"^(?:let'?s\s+|can\s+we\s+|could\s+we\s+|i\s+want\s+to\s+)?debate\s+(?:on|about|regarding)\s+(.+)$",
+        # "let's start/have a discussion on/about <topic>"
+        r"^(?:let'?s\s+|please\s+|can\s+we\s+)?(?:start|have|begin)\s+(?:a\s+)?(?:new\s+)?discussion\s+(?:on|about|regarding)\s+(.+)$",
+        # "let's talk about <topic>"
+        r"^(?:let'?s\s+|can\s+we\s+|please\s+)?(?:talk|speak)\s+(?:about|on|regarding)\s+(.+)$",
+        # "new debate on/about <topic>"
+        r"^(?:new|fresh)\s+debate\s+(?:on|about|regarding)\s+(.+)$",
+        # "change/switch topic to <topic>"
+        r"^(?:change|switch|set)\s+(?:the\s+)?topic\s+(?:to|=)\s*(.+)$",
+        # "topic is <topic>" or "new topic: <topic>"
+        r"^(?:new\s+)?topic\s*(?::|is|=)\s*(.+)$"
+    ]
+
+    for pat in topic_patterns:
+        m = re.match(pat, cleaned, flags=re.IGNORECASE)
+        if m:
+            topic = m.group(1).strip().strip("\"'“”‘’").rstrip(".?!")
+            if len(topic) >= 3 and not re.match(r"^(?:it|this|that|now|already|today)$", topic, re.IGNORECASE):
+                formatted = topic[0].upper() + topic[1:] if len(topic) > 1 else topic.upper()
+                return {"type": "new_topic", "topic": formatted}
+
+    start_general_patterns = [
+        r"^(?:let'?s\s+|please\s+|can\s+we\s+)?(?:start|begin|launch|open)\s+(?:the\s+)?(?:roundtable\s+)?debate\s*$",
+        r"^(?:let'?s\s+|please\s+)?start\s*$",
+        r"^(?:let'?s\s+)?start\s+(?:the\s+)?podcast\s*$",
+        r"^(?:let'?s\s+)?debate\s*$"
+    ]
+    for pat in start_general_patterns:
+        if re.match(pat, cleaned, flags=re.IGNORECASE):
+            return {"type": "start_current"}
+
+    return None
+
 @app.post("/api/interrupt")
 async def handle_human_interruption(
     file: Optional[UploadFile] = File(None),
@@ -379,6 +437,7 @@ async def handle_human_interruption(
     target_agent: Optional[str] = Form(None)
 ):
     """Handles real-time barge-in interruption with instant audio cutoff, robust STT, and memory-aware response."""
+    global topic_engine, memory_engine
     interruption_text = (text or "").strip()
     if not interruption_text and file:
         try:
@@ -396,6 +455,126 @@ async def handle_human_interruption(
             "message": "No clear speech detected. Speak clearly into the microphone or type below.",
             "response": None
         }
+
+    # 1. Instant Voice / Text Intent Detection: Auto-Launch Debate on Topic!
+    intent = extract_debate_start_intent(interruption_text)
+    if intent:
+        if intent["type"] == "new_topic":
+            new_topic = intent["topic"]
+            print(f"[Voice/Command] User launched new debate on topic: '{new_topic}'")
+
+            async with ROUNDTABLE_LOCK:
+                PODCAST_STATE["topic"] = new_topic
+                PODCAST_STATE["history"] = []
+                PODCAST_STATE["a2a_traces"] = []
+                PODCAST_STATE["active_speaker"] = "host"
+                PODCAST_STATE["audio_queue"] = []
+                PODCAST_STATE["is_running"] = True
+
+                coordinator.clear()
+                memory_engine.clear()
+                memory_engine.set_topic(new_topic, clear_history=True)
+                topic_engine = TopicEngine(new_topic)
+
+            await broadcast_event("new_conversation", {
+                "status": "ok",
+                "topic": new_topic,
+                "message": f"Debate started on: {new_topic}"
+            })
+            await broadcast_event("topic_updated", {"topic": new_topic, "cleared": True})
+            await broadcast_event("history_cleared", {"topic": new_topic, "status": "cleared"})
+            await broadcast_event("podcast_status", {"is_running": True})
+
+            persona = PERSONAS["host"]
+            battleground = topic_engine.get_current_battleground()
+
+            response_text = await generate_agent_response(
+                persona=persona,
+                history=[],
+                topic=new_topic,
+                battleground=battleground,
+                novelty_directives="Opening statement: Welcome the listeners, frame the central tension of this new debate topic, outline the stakes, and direct the opening question directly to Charlie.",
+                memory_context=memory_engine.get_structured_context(
+                    target_persona_id="host",
+                    current_dimension=battleground.get("dimension", "Opening Hook"),
+                    max_verbatim_turns=0
+                )
+            )
+
+            topic_engine.record_claim(response_text[:80])
+            memory_engine.record_turn(
+                speaker_id=persona.agent_id,
+                speaker_name=persona.name,
+                role=persona.role,
+                content=response_text,
+                dimension=battleground.get("dimension", "Opening Hook")
+            )
+
+            turn_data = {
+                "agent_id": persona.agent_id,
+                "sender": persona.name,
+                "role": persona.role,
+                "content": response_text
+            }
+
+            async with ROUNDTABLE_LOCK:
+                PODCAST_STATE["history"].append(turn_data)
+
+            a2a_open_msg = A2AMessage(
+                sender_id="host",
+                receiver_id="technologist",
+                intent=A2AIntent.OPEN_ROUNDTABLE,
+                dimension=battleground.get("dimension", "Opening Hook"),
+                claim_summary=f"Opened debate on '{new_topic[:45]}'. Handed floor to Charlie.",
+                priority=1.0
+            )
+            coordinator.record_message(a2a_open_msg)
+            PODCAST_STATE["a2a_traces"].append(a2a_open_msg.to_dict())
+
+            await broadcast_event("turn_started", turn_data)
+            await broadcast_event("a2a_trace", a2a_open_msg.to_dict())
+
+            audio_base64 = ""
+            try:
+                audio_bytes = await synthesize(
+                    text=response_text,
+                    voice_id=persona.voice_id,
+                    agent_id=persona.agent_id
+                )
+                if audio_bytes:
+                    audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+            except Exception as e:
+                print(f"Opening synthesis error: {e}")
+
+            turn_data["audio_base64"] = audio_base64
+            payload = {
+                **turn_data,
+                "is_interruption_response": False,
+                "is_new_topic": True,
+                "topic": new_topic
+            }
+            await broadcast_event("turn_completed", payload)
+
+            return {
+                "status": "new_debate_started",
+                "is_new_topic": True,
+                "topic": new_topic,
+                "interruption": interruption_text,
+                "response": turn_data,
+                "audio_base64": audio_base64
+            }
+        elif intent["type"] == "start_current":
+            PODCAST_STATE["is_running"] = True
+            await broadcast_event("podcast_status", {"is_running": True})
+            turn_res = await trigger_turn()
+            return {
+                "status": "debate_started",
+                "is_new_topic": False,
+                "topic": PODCAST_STATE["topic"],
+                "interruption": interruption_text,
+                "response": turn_res.get("turn"),
+                "audio_base64": turn_res.get("audio_base64")
+            }
 
     lower_text = interruption_text.lower()
 

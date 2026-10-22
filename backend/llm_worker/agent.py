@@ -14,6 +14,7 @@ Supports:
 import os
 import re
 import time
+import random
 from typing import List, Dict, Any, Optional
 import httpx
 from persona_store.models import Persona, get_persona
@@ -89,138 +90,211 @@ def build_procedural_turn(
     roger_angle = bg.get("roger_angle", f"Enforce institutional accountability and risk auditing before deploying {topic}.")
     sarah_hook = bg.get("sarah_hook", f"Where do we draw the line between innovation speed and systemic harm in {topic}?")
 
-    # Handle Audience Interruption
+    # Handle Audience Interruption dynamically by category & randomized conviction
     if user_interruption:
         q = user_interruption.strip().rstrip(".?!")
-        if persona.agent_id == "host":
-            return (
-                f"Hold on, let us address that directly. The listener just asked: '{q}'—and it cuts straight "
-                f"through our theoretical debate. Charlie, Roger, how does your stance hold up when confronted with that reality?"
-            )
-        elif persona.agent_id == "technologist":
-            return (
-                f"Wait, let me jump in on what the listener said. When you ask about '{q}', the real-world engineering reality "
-                f"is that closed monopolies make that problem worse, while open inspection gives users the actual power to verify."
-            )
-        else: # ethicist
-            return (
-                f"I want to answer the listener directly. That question exposes the exact blind spot Charlie has been ignoring: "
-                f"when speed is prioritized over safety, ordinary citizens bear the cost of the irreversible damage."
-            )
+        q_lower = q.lower()
 
-    # Multi-Stage Dynamic Debate Progression (Cycles 0 to 7+)
+        if any(w in q_lower for w in ["job", "worker", "economy", "money", "cost", "pay", "market", "wealth", "hire", "unemploy", "tax"]):
+            category = "economic"
+        elif any(w in q_lower for w in ["kill", "die", "death", "safe", "risk", "harm", "danger", "destroy", "disaster", "catastroph", "survive", "accident"]):
+            category = "risk"
+        elif any(w in q_lower for w in ["law", "ban", "legal", "govern", "regulate", "rule", "policy", "prison", "authorit", "state", "court"]):
+            category = "governance"
+        elif any(w in q_lower for w in ["priva", "track", "surveil", "watch", "data", "spy", "leak"]):
+            category = "privacy"
+        else:
+            category = "general"
+
+        if persona.agent_id == "host":
+            starters = [
+                f"Hold on, let us address the listener directly. When asked: '{q}', it cuts right through the theoretical spin on '{topic}'. Charlie, Roger, how do your principles survive that test?",
+                f"That listener inquiry strikes at the very heart of '{topic}': '{q}'. Roger, Charlie claims market forces adapt, but how do you respond to that reality?",
+                f"Let us pause the theoretical back-and-forth because our listener asked a grounded question: '{q}'. Where does the actual policy red line lie?"
+            ]
+            return random.choice(starters)
+
+        elif persona.agent_id == "technologist":
+            if category == "economic":
+                responses = [
+                    f"That listener question on '{q}' touches the core economic reality. Historically, trying to freeze '{topic}' to protect legacy jobs creates stagnation; empowering every worker with frontier tools is how you build real wage growth.",
+                    f"Look at what happens whenever new tech emerges—asking '{q}' is understandable, but artificial barriers around '{topic}' only protect incumbent monopolies while depriving the public of abundance."
+                ]
+            elif category == "risk":
+                responses = [
+                    f"When the listener asks '{q}', they are pointing to a real fear, but security by obscurity is dead. The only way '{topic}' stays safe is if thousands of independent researchers can inspect the code and build distributed counter-measures.",
+                    f"Addressing '{q}' directly: you cannot eliminate risk by outlawing mathematics. If responsible developers are barred from '{topic}', rogue actors will still build it in the shadows without any public defense."
+                ]
+            elif category == "governance":
+                responses = [
+                    f"On the question of '{q}': government licensing for '{topic}' always gets captured by the largest corporations to squash open-source competition. Decentralized verification is the only democratic check.",
+                    f"The listener asks '{q}'. My answer is unambiguous: bureaucratic permits for '{topic}' do not stop threats—they simply guarantee that everyday citizens are left defenseless."
+                ]
+            else:
+                responses = [
+                    f"That challenge cuts straight to the engineering reality of '{topic}'. When you ask '{q}', the answer is that open protocols and rapid testing beat centralized committee approvals every single time.",
+                    f"Let me answer that listener question directly: '{q}'. Centralized gatekeepers would have you believe only they can be trusted with '{topic}', but transparent systems with public inspection are demonstrably more resilient.",
+                    f"The listener is right to push us on '{q}'. But in '{topic}', the defensive advantage always belongs to the network that iterates fastest in the open."
+                ]
+            return random.choice(responses)
+
+        else: # ethicist
+            if category == "economic":
+                responses = [
+                    f"The listener just exposed Charlie's blind spot regarding '{q}'. In '{topic}', the financial windfalls concentrate into a few corporate balance sheets, while displaced workers and local communities bear all the economic fallout.",
+                    f"Thank you to the listener for asking '{q}'. Charlie talks about 'abundance', but without institutional guardrails, '{topic}' extracts public wealth without paying for the systemic destruction it leaves behind."
+                ]
+            elif category == "risk":
+                responses = [
+                    f"The listener is asking the crucial question Charlie keeps evading: '{q}'. In complex systems like '{topic}', irreversible catastrophes cannot be undone with an open-source bug fix after human lives are lost.",
+                    f"When the audience brings up '{q}', they are stating the plain truth: unchecked acceleration in '{topic}' creates uninsurable existential hazards that no individual citizen consented to take on."
+                ]
+            elif category == "governance":
+                responses = [
+                    f"The listener's question on '{q}' cuts to democratic sovereignty. Why should a handful of Silicon Valley founders decide the fate of '{topic}' without elected oversight and legally binding accountability?",
+                    f"On '{q}': democratic societies have always placed strict liability and licensing on high-consequence technologies like aviation and pharmaceuticals. '{topic}' must not be granted an exception."
+                ]
+            else:
+                responses = [
+                    f"I want to answer the listener directly. That question on '{q}' reveals why Charlie's optimism is dangerous: when speed is prioritized over ethics in '{topic}', vulnerable populations are the first to suffer.",
+                    f"The listener hit the nail on the head regarding '{q}'. We cannot allow technological momentum in '{topic}' to outpace our moral capacity to prevent irreversible societal harm.",
+                    f"Look at what the listener is confronting us with: '{q}'. Precaution and public accountability are not obstacles to progress—they are the only guarantee that '{topic}' serves humanity rather than exploiting it."
+                ]
+            return random.choice(responses)
+
+    # Multi-Stage Dynamic Debate Progression (Cycles 0 to 7+) with diverse argumentative pools
     cycle = (turn_number // 3) % 7
 
     if persona.agent_id == "host":
         if turn_number == 0 or not last_speaker:
-            return (
-                f"Welcome to today's roundtable on '{topic}'. The battle lines are drawn between unrestricted acceleration and systemic governance. "
-                f"Charlie, make the case: {charlie_angle}"
-            )
+            openings = [
+                f"Welcome to today's roundtable on '{topic}'. The battle lines are drawn between unrestricted acceleration and systemic governance. Charlie, make the case: {charlie_angle}",
+                f"Good evening and welcome to the roundtable. Today we confront the defining conflict of '{topic}'. Charlie, open our debate: {charlie_angle}",
+                f"We are live at the roundtable tackling '{topic}'. On one side stands permissionless iteration; on the other, precautionary governance. Charlie, set the terms of your thesis: {charlie_angle}"
+            ]
+            return random.choice(openings)
         elif cycle == 1:
-            return (
-                f"Roger argues that '{topic}' carries irreversible systemic failure modes, while Charlie insists distributed tools are the only scalable shield. "
-                f"Charlie, how do you verify safety when consumer hardware can bypass your safeguards?"
-            )
+            return random.choice([
+                f"Roger argues that '{topic}' carries irreversible systemic failure modes, while Charlie insists distributed tools are the only scalable shield. Charlie, how do you verify safety when consumer hardware can bypass your safeguards?",
+                f"Let's focus the clash: Roger warns that speed without audits guarantees catastrophic breach, but Charlie claims audits just entrench monopolies. Who actually proves safety before deployment in '{topic}'?"
+            ])
         elif cycle == 2:
-            return (
-                f"Let's confront the economic reality behind '{topic}'. Charlie speaks of democratization, but Roger points to the massive concentration of wealth and uninsurable externalities. "
-                f"Who actually bears the legal liability when things fail in production?"
-            )
+            return random.choice([
+                f"Let's confront the economic reality behind '{topic}'. Charlie speaks of democratization, but Roger points to the massive concentration of wealth and uninsurable externalities. Who actually bears the legal liability when things fail in production?",
+                f"The financial incentives in '{topic}' cannot be ignored. Charlie, if your system causes uninsurable market failure, does the taxpayer bail you out, or does the developer take the hit?"
+            ])
         elif cycle == 3:
-            return (
-                f"We are reaching the central fracture of '{topic}'. Roger is demanding enforceable institutional guardrails, while Charlie says that creates a fragile regulatory monopoly. "
-                f"Is meaningful public governance even technically feasible at this velocity?"
-            )
+            return random.choice([
+                f"We are reaching the central fracture of '{topic}'. Roger is demanding enforceable institutional guardrails, while Charlie says that creates a fragile regulatory monopoly. Is meaningful public governance even technically feasible at this velocity?",
+                f"Both of you claim to protect the public. But Roger wants state pre-approval while Charlie wants total open release. How does a democratic citizen verify who is telling the truth in '{topic}'?"
+            ])
         elif cycle == 4:
-            return (
-                f"Both of you are making sweeping assertions. Charlie, show us the empirical evidence that open iteration prevents catastrophic breach. "
-                f"Roger, show us where regulatory bans have ever permanently halted technological momentum."
-            )
+            return random.choice([
+                f"Both of you are making sweeping assertions. Charlie, show us the empirical evidence that open iteration prevents catastrophic breach. Roger, show us where regulatory bans have ever permanently halted technological momentum.",
+                f"Let's strip away the rhetoric on '{topic}'. Charlie, cite one case where open release stopped an asymmetric attacker. Roger, cite one government moratorium that wasn't instantly bypassed overseas."
+            ])
         elif cycle == 5:
-            return (
-                f"I want a clear red line from both panelists on '{topic}'. Charlie, what specific failure mode forces you to pull the emergency brake? "
-                f"Roger, what audit threshold allows deployment to proceed without bureaucratic paralysis?"
-            )
+            return random.choice([
+                f"I want a clear red line from both panelists on '{topic}'. Charlie, what specific failure mode forces you to pull the emergency brake? Roger, what audit threshold allows deployment to proceed without bureaucratic paralysis?",
+                f"We need concrete boundaries. If '{topic}' begins exhibiting unmodeled emergent risks tomorrow, who holds the emergency kill switch?"
+            ])
         else:
-            return (
-                f"We have arrived at the synthesis of '{topic}'. The trade-off is not about stopping progress; it is about who holds the emergency kill switch. "
-                f"Roger, Charlie, answer Sarah's question: {sarah_hook}"
-            )
+            return random.choice([
+                f"We have arrived at the synthesis of '{topic}'. The trade-off is not about stopping progress; it is about who holds the emergency kill switch. Roger, Charlie, answer Sarah's question: {sarah_hook}",
+                f"Final round of synthesis on '{topic}'. You both agree the status quo is unstable, but you disagree on who we trust. Leave our listeners with your ultimate thesis: {sarah_hook}"
+            ])
 
     elif persona.agent_id == "technologist":
+        ref = f"Roger claims that '{roger_claims[-1][:55]}', but that fundamentally misunderstands the technology." if roger_claims else ""
         if cycle == 0:
-            return (
-                f"Look at the foundational mechanics of '{topic}'. Restricting access doesn't stop bad actors—it only disarms "
-                f"the independent developers and security researchers who build the defenses we rely on every day."
-            )
+            options = [
+                f"Look at the foundational mechanics of '{topic}'. Restricting access doesn't stop bad actors—it only disarms the independent developers and security researchers who build the defenses we rely on every day.",
+                f"The historical reality of '{topic}' is crystal clear: progress never comes from permission slips. If you lock down access behind corporate moats, you guarantee that only authoritarian adversaries possess the frontier tools.",
+                f"The premise of banning or gatekeeping '{topic}' is technically illiterate. Compute and algorithms are reproducible mathematics—you cannot regulate math out of existence without creating a police state."
+            ]
+            return random.choice(options)
         elif cycle == 1:
-            return (
-                f"Roger's entire premise relies on security by obscurity, and history proves that always fails. On the dimension of {dimension}: "
-                f"{charlie_angle} Open protocols and cryptographic verification are the only scalable defense."
-            )
+            options = [
+                f"{ref} Roger's entire premise relies on security by obscurity, and history proves that always fails. On the dimension of {dimension}: {charlie_angle} Open protocols and cryptographic verification are the only scalable defense.",
+                f"What Roger completely ignores is that open systems have orders of magnitude more bug hunters and security analysts than any government agency. The fastest way to harden '{topic}' is to open-source the inspection."
+            ]
+            return random.choice(options)
         elif cycle == 2:
-            return (
-                f"What Roger calls 'safety regulations' in practice always becomes an anti-competitive moat for legacy incumbents. "
-                f"If we centralize control of '{topic}', we hand the entire technological frontier to a handful of monopolistic gatekeepers."
-            )
+            options = [
+                f"What Roger calls 'safety regulations' in practice always becomes an anti-competitive moat for legacy incumbents. If we centralize control of '{topic}', we hand the entire technological frontier to a handful of monopolistic gatekeepers.",
+                f"Follow the money on '{topic}'. The corporations lobbying hardest for government licenses are the very ones who want to outlaw open-source competitors who offer the same capabilities for free."
+            ]
+            return random.choice(options)
         elif cycle == 3:
-            return (
-                f"Let's be clear about the technical reality: mathematics and distributed compute cannot be outlawed. "
-                f"If western open-source developers don't build the frontier tools for '{topic}', state-backed authoritarian labs will, and we will have zero inspection capability."
-            )
+            options = [
+                f"Let's be clear about the technical reality: mathematics and distributed compute cannot be outlawed. If western open-source developers don't build the frontier tools for '{topic}', state-backed authoritarian labs will, and we will have zero inspection capability.",
+                f"Roger treats '{topic}' as if it lives in an isolated vacuum. In the real world, unilateral regulation simply exports the innovation to jurisdictions that have zero moral qualms about safety."
+            ]
+            return random.choice(options)
         elif cycle == 4:
-            return (
-                f"Roger treats catastrophic risk like an abstract philosophical boogeyman. The way you make complex systems antifragile is through stress-testing in the open, "
-                f"finding the edge cases, and shipping rapid distributed patches before an adversary exploits them."
-            )
+            options = [
+                f"Roger treats catastrophic risk like an abstract philosophical boogeyman. The way you make complex systems antifragile is through stress-testing in the open, finding the edge cases, and shipping rapid distributed patches before an adversary exploits them.",
+                f"No complex engineering system in human history—from the internet backbone to aviation avionics—became safe through fear and moratoriums. They became safe through rigorous, open, relentless iteration."
+            ]
+            return random.choice(options)
         elif cycle == 5:
-            return (
-                f"The only scalable defense in human history has been open protocols and decentralized ownership. "
-                f"Trying to lock down '{topic}' with government permits guarantees failure; giving tools to the public guarantees resilience."
-            )
+            options = [
+                f"The only scalable defense in human history has been open protocols and decentralized ownership. Trying to lock down '{topic}' with government permits guarantees failure; giving tools to the public guarantees resilience.",
+                f"My red line is simple: when you concentrate control of '{topic}' into a closed committee, you create a single point of failure that can be corrupted or conquered overnight."
+            ]
+            return random.choice(options)
         else:
-            return (
-                f"Every breakthrough from the printing press to encryption faced this exact fear-mongering. "
-                f"The antidote to bad code and rogue actors around '{topic}' is more builders, faster iteration, and total transparency."
-            )
+            options = [
+                f"Every breakthrough from the printing press to encryption faced this exact fear-mongering. The antidote to bad code and rogue actors around '{topic}' is more builders, faster iteration, and total transparency.",
+                f"Trusting the public with open tools has built the modern world. If we abandon that principle on '{topic}', we are surrendering the future out of sheer cowardice."
+            ]
+            return random.choice(options)
 
     else: # ethicist
+        ref = f"Charlie wants you to believe '{charlie_claims[-1][:55]}', but that is pure techno-solutionist hubris." if charlie_claims else ""
         if cycle == 0:
-            return (
-                f"We have to examine the real-world incentives driving '{topic}'. Without enforceable institutional accountability, "
-                f"the immense profits flow to private developers while the collective public absorbs the catastrophic externalities."
-            )
+            options = [
+                f"We have to examine the real-world incentives driving '{topic}'. Without enforceable institutional accountability, the immense profits flow to private developers while the collective public absorbs the catastrophic externalities.",
+                f"Charlie frames '{topic}' as a harmless coding exercise, but high-consequence technologies reshape human rights and civil liberties. You cannot privatize the financial upside while externalizing all the systemic damage onto ordinary citizens.",
+                f"Let us ground this in reality: permissionless experimentation on live human populations is unethical. '{topic}' requires independent safety verification before deployment, not apologies after the crash."
+            ]
+            return random.choice(options)
         elif cycle == 1:
-            return (
-                f"Charlie treats existential and systemic risk as just another software bug you can patch after deployment. On the dimension of {dimension}: "
-                f"{roger_angle} Irreversible harms cannot be rolled back with an open-source commit after the damage is done."
-            )
+            options = [
+                f"{ref} Charlie treats existential and systemic risk as just another software bug you can patch after deployment. On the dimension of {dimension}: {roger_angle} Irreversible harms cannot be rolled back with an open-source commit after the damage is done.",
+                f"Charlie's faith in 'distributed patches' collapses the moment a failure is lethal or irreversible. In medicine, aviation, and nuclear energy, pre-deployment proof is mandatory—and '{topic}' must meet that same threshold."
+            ]
+            return random.choice(options)
         elif cycle == 2:
-            return (
-                f"Charlie keeps drawing a false equivalence between harmless code repositories and autonomous dual-use intelligence. "
-                f"When '{topic}' interacts with critical infrastructure and democratic stability, a single uninsurable failure is game over."
-            )
+            options = [
+                f"Charlie keeps drawing a false equivalence between harmless code repositories and autonomous dual-use intelligence. When '{topic}' interacts with critical infrastructure and democratic stability, a single uninsurable failure is game over.",
+                f"Who pays the damages when Charlie's 'permissionless innovation' causes a systemic failure? The accelerationist dogma always socializes the disaster while privatizing the upside, leaving ordinary citizens completely unprotected."
+            ]
+            return random.choice(options)
         elif cycle == 3:
-            return (
-                f"Who pays the damages when Charlie's 'permissionless innovation' causes a systemic failure? "
-                f"The accelerationist dogma always socializes the disaster while privatizing the upside, leaving ordinary citizens completely unprotected."
-            )
+            options = [
+                f"Precaution is not stagnation—it is basic engineering discipline. You don't launch a nuclear reactor or an airliner without rigorous third-party auditing, and '{topic}' demands the exact same enforceable institutional standards.",
+                f"Notice how Charlie dodges democratic legitimacy. In a constitutional democracy, the public has an inherent sovereign right to place binding red lines on technologies that threaten their livelihood and security."
+            ]
+            return random.choice(options)
         elif cycle == 4:
-            return (
-                f"Precaution is not stagnation—it is basic engineering discipline. You don't launch a nuclear reactor or an airliner without rigorous third-party auditing, "
-                f"and '{topic}' demands the exact same enforceable institutional standards."
-            )
+            options = [
+                f"Charlie demands empirical evidence of disaster before he agrees to safety rules. But in complex systemic risks, waiting for body counts before enacting governance is criminally irresponsible.",
+                f"Silicon Valley techno-solutionism cannot substitute for democratic legitimacy. The public has an absolute sovereign right to place binding red lines on '{topic}' before reckless developers deploy irreversible systems."
+            ]
+            return random.choice(options)
         elif cycle == 5:
-            return (
-                f"Silicon Valley techno-solutionism cannot substitute for democratic legitimacy. "
-                f"The public has an absolute sovereign right to place binding red lines on '{topic}' before reckless developers deploy irreversible systems."
-            )
+            options = [
+                f"My red line on '{topic}' is non-negotiable: the moment any system exhibits uninsurable, irreversible systemic failure modes without a guaranteed independent audit, deployment must be halted by law.",
+                f"When Charlie says 'you can't outlaw math', he is using rhetoric to excuse corporate recklessness. We don't outlaw chemistry, but we strictly regulate nerve agents and biological pathogens."
+            ]
+            return random.choice(options)
         else:
-            return (
-                f"Charlie's worldview assumes infinite resilience, but human institutions are fragile. "
-                f"If we surrender democratic governance over '{topic}' to an unelected technological priesthood, we forfeit the right to a safe future."
-            )
+            options = [
+                f"Charlie's worldview assumes infinite resilience, but human institutions are fragile. If we surrender democratic governance over '{topic}' to an unelected technological priesthood, we forfeit the right to a safe future.",
+                f"True progress is not moving fast and breaking democratic institutions. True progress is aligning the immense power of '{topic}' with human dignity and long-term civilizational survival."
+            ]
+            return random.choice(options)
 
 _last_ollama_check_time = 0.0
 _ollama_online = False

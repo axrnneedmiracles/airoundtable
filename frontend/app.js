@@ -712,6 +712,19 @@ async function sendInterruption() {
     });
     const data = await res.json();
     if (data && data.response) {
+      if (data.is_new_topic) {
+        clearChatUI();
+        if (currentTopicEl) currentTopicEl.textContent = data.topic;
+        updateActiveTopicPill(data.topic);
+        isRunning = true;
+        if (podcastStatusText) podcastStatusText.textContent = "Live Discussion";
+        if (podcastDot) podcastDot.classList.add("active");
+        if (toggleDebateBtn) {
+          toggleDebateBtn.textContent = "Pause Debate";
+          toggleDebateBtn.classList.add("btn-danger");
+        }
+        if (micStatusText) micStatusText.textContent = `🚀 Debate started on: "${data.topic}"!`;
+      }
       const turnPayload = {
         ...data.response,
         audio_base64: data.audio_base64 || data.response?.audio_base64
@@ -1081,7 +1094,21 @@ async function ensureMicStreamInitialized() {
               return;
             }
 
-            if (micStatusText) {
+            if (data.is_new_topic) {
+              clearChatUI();
+              if (currentTopicEl) currentTopicEl.textContent = data.topic;
+              updateActiveTopicPill(data.topic);
+              isRunning = true;
+              if (podcastStatusText) podcastStatusText.textContent = "Live Discussion";
+              if (podcastDot) podcastDot.classList.add("active");
+              if (toggleDebateBtn) {
+                toggleDebateBtn.textContent = "Pause Debate";
+                toggleDebateBtn.classList.add("btn-danger");
+              }
+              if (micStatusText) {
+                micStatusText.textContent = `🚀 Debate started on: "${data.topic}"!`;
+              }
+            } else if (micStatusText) {
               micStatusText.textContent = `🎙️ Heard: "${data.interruption}" ➔ ${data.response?.sender || 'Agent'} answering aloud`;
             }
             if (interruptText) interruptText.value = "";
@@ -1159,9 +1186,21 @@ async function ensureMicStreamInitialized() {
   }
 }
 
+function isTypingContext(target) {
+  if (!target) return false;
+  const tag = (target.tagName || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.isContentEditable) return true;
+  if (typeof target.closest === "function" && target.closest("input, textarea, select, [contenteditable='true']")) return true;
+  return false;
+}
+
 // PUSH-TO-TALK SPACEBAR SHORTCUT (Default & 100% Noise-Immune)
 window.addEventListener("keydown", async (e) => {
-  if (e.code === "Space" && e.target !== interruptText && !isManualRecording) {
+  // If user is typing in ANY input, textarea, or modal, let spacebar type normally!
+  if (isTypingContext(e.target)) return;
+
+  if (e.code === "Space" && !e.repeat && !isManualRecording) {
     e.preventDefault();
     await ensureMicStreamInitialized();
     startRecordingSession(true);
@@ -1169,6 +1208,8 @@ window.addEventListener("keydown", async (e) => {
 });
 
 window.addEventListener("keyup", (e) => {
+  if (isTypingContext(e.target)) return;
+
   if (e.code === "Space" && isManualRecording) {
     e.preventDefault();
     stopAndSendRecording();
