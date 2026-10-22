@@ -33,6 +33,18 @@
       <div class="status-pill secondary">
         <span>A2A Protocol v1.0</span>
       </div>
+      <button class="icon-btn" id="memory-btn" title="Episodic Memory & Stance Ledger">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.04Z"/>
+          <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.04Z"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="settings-btn" title="Studio Settings & ElevenLabs Key">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
       <button class="icon-btn" id="theme-btn" title="Toggle Mode">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20Z" fill="currentColor"/>
@@ -392,6 +404,132 @@
     </div>
 
   </main>
+
+  <!-- Studio Settings Modal -->
+  <div class="modal-overlay" id="settings-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Studio Settings & Configuration</h3>
+          <p class="modal-subtitle">Configure ElevenLabs TTS, fine-tuning exports, and browser voice</p>
+        </div>
+        <button class="modal-close-btn" id="close-settings-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- ElevenLabs API Key Section -->
+        <div class="settings-group">
+          <div class="settings-label-row">
+            <label for="elevenlabs-key-input">ElevenLabs API Key</label>
+            <span class="tts-status-badge" id="tts-status-badge">Checking...</span>
+          </div>
+          <p class="settings-hint">
+            Enter your key for ultra-realistic neural speech. If not provided, the studio uses harmonic procedural fallback with real frequency spectrums.
+          </p>
+          <div class="key-input-row">
+            <input type="password" id="elevenlabs-key-input" placeholder="sk_... (paste your ElevenLabs API key here)" autocomplete="off" />
+            <button class="primary-btn sm" id="save-elevenlabs-key-btn">Save Key</button>
+          </div>
+          <div class="settings-feedback" id="key-save-feedback"></div>
+        </div>
+
+        <!-- Fine-Tuning Dataset Export Section -->
+        <div class="settings-group">
+          <div class="settings-label-row">
+            <label>Model Fine-Tuning Dataset Exporter</label>
+            <span class="badge-tag">LLaMA 3 / Mistral</span>
+          </div>
+          <p class="settings-hint">
+            Export the complete debate transcript with speaker cross-referencing and interruption handling formatted for Unsloth, Axolotl, or OpenAI fine-tuning.
+          </p>
+          <div class="export-btn-row">
+            <a href="/api/finetune/export?format=openai" download="roundtable_openai.jsonl" class="secondary-btn sm" id="export-openai-btn">
+              Download OpenAI ChatML (.jsonl)
+            </a>
+            <a href="/api/finetune/export?format=sharegpt" download="roundtable_sharegpt.jsonl" class="secondary-btn sm" id="export-sharegpt-btn">
+              Download ShareGPT (.jsonl)
+            </a>
+          </div>
+        </div>
+
+        <!-- Browser Speech Synthesis Fallback Toggle -->
+        <div class="settings-group">
+          <div class="settings-label-row">
+            <label>Browser Voice Companion</label>
+            <label class="switch">
+              <input type="checkbox" id="browser-speech-toggle" checked>
+              <span class="slider round"></span>
+            </label>
+          </div>
+          <p class="settings-hint">
+            Read AI dialogue aloud using local browser speech synthesis when ElevenLabs API key is not configured.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Long-Term Memory & Stance Ledger Modal -->
+  <div class="modal-overlay" id="memory-modal" style="display: none;">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Debate Long-Term Memory Engine</h3>
+          <p class="modal-subtitle">Episodic memory, established claims ledger, and audience Q&A tracker</p>
+        </div>
+        <button class="modal-close-btn" id="close-memory-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="memory-stats-grid" id="memory-stats-grid">
+          <div class="memory-stat-box">
+            <span class="stat-number" id="mem-total-turns">0</span>
+            <span class="stat-label">Total Turns In Memory</span>
+          </div>
+          <div class="memory-stat-box">
+            <span class="stat-number" id="mem-claims-count">0</span>
+            <span class="stat-label">Established Claims</span>
+          </div>
+          <div class="memory-stat-box">
+            <span class="stat-number" id="mem-audience-count">0</span>
+            <span class="stat-label">Audience Inquiries</span>
+          </div>
+        </div>
+
+        <div class="memory-section">
+          <h4>Running Episodic Narrative Arc</h4>
+          <div class="narrative-box" id="mem-narrative-summary">
+            Debate starting... Full context synthesis will appear here as panelists speak.
+          </div>
+        </div>
+
+        <div class="memory-section">
+          <h4>Panelist Stance Ledger</h4>
+          <div class="ledger-columns">
+            <div class="ledger-col host">
+              <h5>Sarah (Host)</h5>
+              <ul id="ledger-host-list"><li class="empty-li">No claims recorded yet.</li></ul>
+            </div>
+            <div class="ledger-col tech">
+              <h5>Charlie (Technologist)</h5>
+              <ul id="ledger-tech-list"><li class="empty-li">No claims recorded yet.</li></ul>
+            </div>
+            <div class="ledger-col ethic">
+              <h5>Roger (Ethicist)</h5>
+              <ul id="ledger-ethic-list"><li class="empty-li">No claims recorded yet.</li></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="memory-section">
+          <h4>Audience Interventions & Challenges</h4>
+          <div class="audience-log-list" id="mem-audience-list">
+            <div class="empty-audience-note">No listener questions received yet. Speak into the mic to interrupt the panel!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <audio id="audio-player" style="display: none;"></audio>
   <script src="/static/orb.js"></script>

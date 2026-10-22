@@ -226,6 +226,9 @@ function handleServerEvent(event) {
       audioPlayer.pause();
       audioPlayer.currentTime = 0;
     }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     isAudioPlaying = false;
     isProcessingTurn = true; // Lock turn execution while interruption processes
     if (nextTurnTimer) {
@@ -310,7 +313,7 @@ function handleTurnPayload(payload) {
         // Natural 1.4s conversational pause before next panelist speaks
         nextTurnTimer = setTimeout(triggerNextTurn, 1400);
       }
-    });
+    }, payload.content, payload.agent_id);
   } else {
     // If no audio (or fallback), hold speaking state for 2.5s then continue
     setOrbState("talking", payload.agent_id);
@@ -327,10 +330,18 @@ function handleTurnPayload(payload) {
 }
 
 // Play Audio with Full State Tracking
-function playAudioBase64(base64Data, onEndCallback) {
+function playAudioBase64(base64Data, onEndCallback, turnContent = "", agentId = "host") {
   try {
-    const audioSrc = "data:audio/mpeg;base64," + base64Data;
+    const isWav = base64Data.startsWith("UklGR");
+    const mime = isWav ? "audio/wav" : "audio/mpeg";
+    const audioSrc = `data:${mime};base64,` + base64Data;
     audioPlayer.src = audioSrc;
+
+    // Optional Browser Speech Companion (speaks aloud when fallback audio is active)
+    const browserToggle = document.getElementById("browser-speech-toggle");
+    if (isWav && browserToggle && browserToggle.checked && turnContent) {
+      speakBrowserVoice(turnContent, agentId);
+    }
 
     let endedCalled = false;
     const callEndOnce = () => {
@@ -667,6 +678,9 @@ async function sendInterruption() {
     audioPlayer.pause();
     audioPlayer.currentTime = 0;
   }
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
   isAudioPlaying = false;
   isProcessingTurn = true;
   if (nextTurnTimer) {
@@ -830,6 +844,9 @@ function startRecordingSession(isManual = false) {
   if (audioPlayer && !audioPlayer.paused) {
     audioPlayer.pause();
     audioPlayer.currentTime = 0;
+  }
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
   }
   isAudioPlaying = false;
   isProcessingTurn = true;
@@ -1281,3 +1298,197 @@ document.addEventListener("click", () => {
     ensureMicStreamInitialized();
   }
 }, { once: true });
+
+// ============================================================================
+// 6. BROWSER VOICE COMPANION & STUDIO SETTINGS / MEMORY MODALS
+// ============================================================================
+function speakBrowserVoice(text, agentId = "host") {
+  if (!window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+
+    if (agentId === "host") {
+      utterance.pitch = 1.15; // Sarah: Higher pitch, crisp moderator cadence
+      utterance.rate = 1.05;
+    } else if (agentId === "technologist") {
+      utterance.pitch = 0.95; // Charlie: Medium-low, energetic systems hacker
+      utterance.rate = 1.08;
+    } else {
+      utterance.pitch = 0.82; // Roger: Deep, measured policy scholar
+      utterance.rate = 0.96;
+    }
+
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    console.warn("Speech synthesis note:", e);
+  }
+}
+
+// Studio Settings Modal Handlers
+const settingsBtn = document.getElementById("settings-btn");
+const settingsModal = document.getElementById("settings-modal");
+const closeSettingsBtn = document.getElementById("close-settings-btn");
+const saveKeyBtn = document.getElementById("save-elevenlabs-key-btn");
+const keyInput = document.getElementById("elevenlabs-key-input");
+const keyFeedback = document.getElementById("key-save-feedback");
+const ttsStatusBadge = document.getElementById("tts-status-badge");
+
+async function checkStudioConfig() {
+  try {
+    const res = await fetch(`${API_BASE}/api/config`);
+    if (res.ok) {
+      const cfg = await res.json();
+      if (ttsStatusBadge) {
+        if (cfg.tts && cfg.tts.is_configured) {
+          ttsStatusBadge.textContent = `Active • ${cfg.tts.masked_key}`;
+          ttsStatusBadge.classList.add("active");
+        } else {
+          ttsStatusBadge.textContent = "Procedural Fallback Mode";
+          ttsStatusBadge.classList.remove("active");
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Config fetch notice:", err);
+  }
+}
+checkStudioConfig();
+
+if (settingsBtn && settingsModal) {
+  settingsBtn.addEventListener("click", () => {
+    checkStudioConfig();
+    settingsModal.style.display = "flex";
+  });
+}
+
+if (closeSettingsBtn && settingsModal) {
+  closeSettingsBtn.addEventListener("click", () => {
+    settingsModal.style.display = "none";
+  });
+}
+
+if (saveKeyBtn && keyInput) {
+  saveKeyBtn.addEventListener("click", async () => {
+    const key = keyInput.value.trim();
+    if (!key) {
+      if (keyFeedback) {
+        keyFeedback.textContent = "Please enter a valid API key string.";
+        keyFeedback.className = "settings-feedback error";
+      }
+      return;
+    }
+    saveKeyBtn.disabled = true;
+    saveKeyBtn.textContent = "Saving...";
+
+    try {
+      const fd = new FormData();
+      fd.append("api_key", key);
+      const res = await fetch(`${API_BASE}/api/config/tts`, { method: "POST", body: fd });
+      const data = await res.json();
+
+      if (data.status === "updated") {
+        if (keyFeedback) {
+          keyFeedback.textContent = "✓ ElevenLabs API Key activated successfully!";
+          keyFeedback.className = "settings-feedback success";
+        }
+        keyInput.value = "";
+        checkStudioConfig();
+      }
+    } catch (err) {
+      if (keyFeedback) {
+        keyFeedback.textContent = "Failed to update key: " + err.message;
+        keyFeedback.className = "settings-feedback error";
+      }
+    } finally {
+      saveKeyBtn.disabled = false;
+      saveKeyBtn.textContent = "Save Key";
+    }
+  });
+}
+
+// Long-Term Memory Modal Handlers
+const memoryBtn = document.getElementById("memory-btn");
+const memoryModal = document.getElementById("memory-modal");
+const closeMemoryBtn = document.getElementById("close-memory-btn");
+const memTotalTurns = document.getElementById("mem-total-turns");
+const memClaimsCount = document.getElementById("mem-claims-count");
+const memAudienceCount = document.getElementById("mem-audience-count");
+const memNarrativeSummary = document.getElementById("mem-narrative-summary");
+const ledgerHostList = document.getElementById("ledger-host-list");
+const ledgerTechList = document.getElementById("ledger-tech-list");
+const ledgerEthicList = document.getElementById("ledger-ethic-list");
+const memAudienceList = document.getElementById("mem-audience-list");
+
+async function loadMemoryState() {
+  try {
+    const res = await fetch(`${API_BASE}/api/memory`);
+    if (!res.ok) return;
+    const mem = await res.json();
+
+    if (memTotalTurns) memTotalTurns.textContent = mem.turns_count || 0;
+    
+    const hostClaims = mem.claims_ledger?.host || [];
+    const techClaims = mem.claims_ledger?.technologist || [];
+    const ethicClaims = mem.claims_ledger?.ethicist || [];
+    const totalClaims = hostClaims.length + techClaims.length + ethicClaims.length;
+    if (memClaimsCount) memClaimsCount.textContent = totalClaims;
+
+    const audienceItems = mem.audience_interventions || [];
+    if (memAudienceCount) memAudienceCount.textContent = audienceItems.length;
+
+    if (memNarrativeSummary) {
+      memNarrativeSummary.textContent = mem.narrative_summary || "Debate in progress... Episodic summary updates every few turns.";
+    }
+
+    // Render Claims Ledgers
+    function renderList(el, items) {
+      if (!el) return;
+      if (!items || items.length === 0) {
+        el.innerHTML = '<li class="empty-li">No claims established yet.</li>';
+      } else {
+        el.innerHTML = items.map(c => `<li>${c}</li>`).join("");
+      }
+    }
+    renderList(ledgerHostList, hostClaims);
+    renderList(ledgerTechList, techClaims);
+    renderList(ledgerEthicList, ethicClaims);
+
+    // Render Audience Interventions
+    if (memAudienceList) {
+      if (audienceItems.length === 0) {
+        memAudienceList.innerHTML = '<div class="empty-audience-note">No listener questions received yet. Speak into the mic to interrupt the panel!</div>';
+      } else {
+        memAudienceList.innerHTML = audienceItems.map(item => `
+          <div class="audience-item">
+            <span class="audience-item-q">"${item.question}"</span>
+            <span class="audience-item-meta">Turn #${item.turn_index} • Directed to: ${item.directed_to || 'All'} • ${item.answered ? `Answered by ${item.answered_by || 'Panel'}` : 'Open Challenge'}</span>
+          </div>
+        `).join("");
+      }
+    }
+  } catch (err) {
+    console.warn("Memory fetch error:", err);
+  }
+}
+
+if (memoryBtn && memoryModal) {
+  memoryBtn.addEventListener("click", () => {
+    loadMemoryState();
+    memoryModal.style.display = "flex";
+  });
+}
+
+if (closeMemoryBtn && memoryModal) {
+  closeMemoryBtn.addEventListener("click", () => {
+    memoryModal.style.display = "none";
+  });
+}
+
+// Close modals when clicking backdrop
+window.addEventListener("click", (e) => {
+  if (e.target === settingsModal) settingsModal.style.display = "none";
+  if (e.target === memoryModal) memoryModal.style.display = "none";
+});
+
