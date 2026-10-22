@@ -419,6 +419,44 @@
 
   </main>
 
+  <!-- Custom Topic Debate Modal -->
+  <div class="modal-overlay" id="custom-topic-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Start Custom Topic Debate</h3>
+          <p class="modal-subtitle">Set any philosophical, technical, or political battleground for the AI agents</p>
+        </div>
+        <button class="modal-close-btn" id="close-topic-modal-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="settings-group">
+          <label for="custom-topic-input">Debate Topic or Motion</label>
+          <p class="settings-hint">Type any question, controversy, or hypothesis you want Sarah, Charlie, and Roger to clash over.</p>
+          <input type="text" id="custom-topic-input" class="text-input-field" placeholder="e.g., Should AI Replace Judges in Criminal Sentencing?" style="width: 100%; margin-top: 8px; padding: 11px 14px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-primary); font-size: 14px; box-sizing: border-box;" />
+        </div>
+
+        <div class="settings-group">
+          <label>Quick Idea Sparks:</label>
+          <div class="topic-sparks-row" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+            <button class="pill-btn-small spark-pill" type="button" data-topic="Should AI Replace Human Judges in Criminal Courts?">AI in Judiciary</button>
+            <button class="pill-btn-small spark-pill" type="button" data-topic="Autonomous AI Weapons in Warfare: Sovereign Defense vs Global Ban Treaties">Autonomous Weapons</button>
+            <button class="pill-btn-small spark-pill" type="button" data-topic="Replacing Human Teachers with Personalized Adaptive AI Tutors">AI in Education</button>
+            <button class="pill-btn-small spark-pill" type="button" data-topic="Universal Basic Compute: Should the State Guarantee Free GPU Access to Every Citizen?">Universal Basic Compute</button>
+            <button class="pill-btn-small spark-pill" type="button" data-topic="CRISPR Human Germline Editing: Eradicating Disease vs Unregulated Eugenics">CRISPR Gene Editing</button>
+            <button class="pill-btn-small spark-pill" type="button" data-topic="Synthetic Media and Deepfakes: Mandatory Cryptographic Watermarks vs Free Speech">Deepfake Mandates</button>
+          </div>
+        </div>
+
+        <div style="margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;">
+          <button class="pill-btn-small" type="button" id="cancel-topic-modal-btn" style="padding: 8px 16px;">Cancel</button>
+          <button class="btn-primary-studio" type="button" id="launch-topic-btn" style="padding: 10px 22px; font-weight: 600; font-size: 13px;">🚀 Launch Debate Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Studio Settings Modal -->
   <div class="modal-overlay" id="settings-modal" style="display: none;">
     <div class="modal-card">

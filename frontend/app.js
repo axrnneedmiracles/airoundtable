@@ -1216,8 +1216,8 @@ async function startNewConversation(customTopic = null) {
 
 const topbarNewConvoBtn = document.getElementById("topbar-new-convo-btn");
 const newConvoBtn = document.getElementById("new-convo-btn");
-if (topbarNewConvoBtn) topbarNewConvoBtn.addEventListener("click", () => startNewConversation());
-if (newConvoBtn) newConvoBtn.addEventListener("click", () => startNewConversation());
+if (topbarNewConvoBtn) topbarNewConvoBtn.addEventListener("click", () => openCustomTopicModal());
+if (newConvoBtn) newConvoBtn.addEventListener("click", () => openCustomTopicModal());
 
 // Master Controls
 if (startBtn) startBtn.addEventListener("click", toggleAutonomousDebate);
@@ -1324,21 +1324,77 @@ async function loadTopicPresets() {
   }
 }
 
-// Custom Topic Prompt with Clear Option
-if (changeTopicBtn) {
-  changeTopicBtn.addEventListener("click", async () => {
-    const current = currentTopicEl ? currentTopicEl.textContent : "";
-    const newTopic = prompt("Enter new custom debate topic brief:", current);
-    if (newTopic && newTopic.trim()) {
-      const shouldClear = confirm("Do you want to clear chat history for this new debate topic?");
-      const fd = new FormData();
-      fd.append("topic", newTopic.trim());
-      fd.append("clear_history", shouldClear ? "true" : "false");
-      await fetch(`${API_BASE}/api/topic`, { method: "POST", body: fd });
-      if (shouldClear) {
-        clearChatUI();
-      }
+// Custom Topic Modal Elements & Auto-Launcher
+const customTopicModal = document.getElementById("custom-topic-modal");
+const closeTopicModalBtn = document.getElementById("close-topic-modal-btn");
+const cancelTopicModalBtn = document.getElementById("cancel-topic-modal-btn");
+const customTopicInput = document.getElementById("custom-topic-input");
+const launchTopicBtn = document.getElementById("launch-topic-btn");
+
+function openCustomTopicModal() {
+  if (customTopicModal) {
+    customTopicModal.style.display = "flex";
+    if (customTopicInput) {
+      customTopicInput.value = "";
+      setTimeout(() => customTopicInput.focus(), 60);
     }
+  }
+}
+
+function closeCustomTopicModal() {
+  if (customTopicModal) customTopicModal.style.display = "none";
+}
+
+if (changeTopicBtn) changeTopicBtn.addEventListener("click", openCustomTopicModal);
+if (closeTopicModalBtn) closeTopicModalBtn.addEventListener("click", closeCustomTopicModal);
+if (cancelTopicModalBtn) cancelTopicModalBtn.addEventListener("click", closeCustomTopicModal);
+
+// Quick Spark Pills Click Handler
+document.querySelectorAll(".spark-pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    const topic = pill.getAttribute("data-topic");
+    if (customTopicInput && topic) {
+      customTopicInput.value = topic;
+    }
+  });
+});
+
+// Launch Custom Topic Debate Instantly
+async function launchCustomTopicDebate() {
+  const topic = (customTopicInput ? customTopicInput.value : "").trim();
+  if (!topic) {
+    if (customTopicInput) customTopicInput.focus();
+    return;
+  }
+  closeCustomTopicModal();
+
+  // 1. Update UI topic display
+  if (currentTopicEl) currentTopicEl.textContent = topic;
+  clearChatUI();
+
+  // 2. Initialize fresh debate state on server
+  const fd = new FormData();
+  fd.append("topic", topic);
+  try {
+    await fetch(`${API_BASE}/api/conversation/new`, { method: "POST", body: fd });
+  } catch (e) {
+    console.warn("Topic init notice:", e);
+  }
+
+  // 3. Immediately launch autonomous debate!
+  isRunning = true;
+  if (startBtn) startBtn.classList.add("running");
+  if (startBtnText) startBtnText.textContent = "Pause Autonomous Roundtable";
+  isProcessingTurn = false;
+  lastProcessedTurnContent = "";
+  if (micStatusText) micStatusText.textContent = `🚀 Debating: "${topic.slice(0, 50)}..."`;
+  triggerNextTurn();
+}
+
+if (launchTopicBtn) launchTopicBtn.addEventListener("click", launchCustomTopicDebate);
+if (customTopicInput) {
+  customTopicInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") launchCustomTopicDebate();
   });
 }
 

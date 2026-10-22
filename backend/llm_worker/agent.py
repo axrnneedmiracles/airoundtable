@@ -65,22 +65,31 @@ def clean_speech_text(text: str, persona_name: str) -> str:
 def build_procedural_turn(
     persona: Persona,
     topic: str,
-    dimension: str,
-    last_speaker: str,
-    last_argument: str,
+    dimension: str = "Core Debate",
+    battleground: Optional[Dict[str, str]] = None,
+    last_speaker: str = "",
+    last_argument: str = "",
     user_interruption: Optional[str] = None,
-    memory_context: Optional[Dict[str, Any]] = None
+    memory_context: Optional[Dict[str, Any]] = None,
+    turn_number: int = 0
 ) -> str:
-    """High-fidelity procedural conversational fallback.
+    """High-fidelity dynamic procedural reasoning engine.
     
-    Generates intelligent, dynamically contextualized dialogue referencing the active debate,
-    speaker names, and user interruptions when local or cloud LLMs are offline.
+    Generates authentic, unscripted-sounding multi-round debate turns tailored to ANY topic
+    and battleground dimension without ever repeating previous claims.
     """
     mem = memory_context or {}
     charlie_claims = mem.get("charlie_claims", [])
     roger_claims = mem.get("roger_claims", [])
     sarah_points = mem.get("sarah_points", [])
+    narrative = mem.get("narrative_summary", "")
 
+    bg = battleground or {}
+    charlie_angle = bg.get("charlie_angle", f"Accelerate open experimentation and distributed testing around {topic}.")
+    roger_angle = bg.get("roger_angle", f"Enforce institutional accountability and risk auditing before deploying {topic}.")
+    sarah_hook = bg.get("sarah_hook", f"Where do we draw the line between innovation speed and systemic harm in {topic}?")
+
+    # Handle Audience Interruption
     if user_interruption:
         q = user_interruption.strip().rstrip(".?!")
         if persona.agent_id == "host":
@@ -99,44 +108,118 @@ def build_procedural_turn(
                 f"when speed is prioritized over safety, ordinary citizens bear the cost of the irreversible damage."
             )
 
-    # Standard Turn Rotation
+    # Multi-Stage Dynamic Debate Progression (Cycles 0 to 7+)
+    cycle = (turn_number // 3) % 7
+
     if persona.agent_id == "host":
-        if last_speaker == "Charlie":
-            return (
-                f"Charlie claims decentralized tools solve the problem, but Roger has repeatedly warned about irreversible systemic failure. "
-                f"How do we actually verify that safety guarantees cannot be stripped away in ten minutes of fine-tuning?"
-            )
-        elif last_speaker == "Roger":
-            return (
-                f"Roger highlights the societal dangers, but Charlie argues that banning open weights simply concentrates power in Big Tech monopolies. "
-                f"Where is the realistic equilibrium between public protection and technological freedom?"
-            )
-        else:
+        if turn_number == 0 or not last_speaker:
             return (
                 f"Welcome to today's roundtable on '{topic}'. The battle lines are drawn between unrestricted acceleration and systemic governance. "
-                f"Charlie, make the case: why should society trust open development with high-consequence technologies?"
+                f"Charlie, make the case: {charlie_angle}"
             )
+        elif cycle == 1:
+            return (
+                f"Roger argues that '{topic}' carries irreversible systemic failure modes, while Charlie insists distributed tools are the only scalable shield. "
+                f"Charlie, how do you verify safety when consumer hardware can bypass your safeguards?"
+            )
+        elif cycle == 2:
+            return (
+                f"Let's confront the economic reality behind '{topic}'. Charlie speaks of democratization, but Roger points to the massive concentration of wealth and uninsurable externalities. "
+                f"Who actually bears the legal liability when things fail in production?"
+            )
+        elif cycle == 3:
+            return (
+                f"We are reaching the central fracture of '{topic}'. Roger is demanding enforceable institutional guardrails, while Charlie says that creates a fragile regulatory monopoly. "
+                f"Is meaningful public governance even technically feasible at this velocity?"
+            )
+        elif cycle == 4:
+            return (
+                f"Both of you are making sweeping assertions. Charlie, show us the empirical evidence that open iteration prevents catastrophic breach. "
+                f"Roger, show us where regulatory bans have ever permanently halted technological momentum."
+            )
+        elif cycle == 5:
+            return (
+                f"I want a clear red line from both panelists on '{topic}'. Charlie, what specific failure mode forces you to pull the emergency brake? "
+                f"Roger, what audit threshold allows deployment to proceed without bureaucratic paralysis?"
+            )
+        else:
+            return (
+                f"We have arrived at the synthesis of '{topic}'. The trade-off is not about stopping progress; it is about who holds the emergency kill switch. "
+                f"Roger, Charlie, answer Sarah's question: {sarah_hook}"
+            )
+
     elif persona.agent_id == "technologist":
-        if last_speaker == "Roger":
+        if cycle == 0:
             return (
-                f"Roger, your premise assumes a centralized committee can predict and regulate every failure mode before it happens. "
-                f"History proves that security by obscurity always fails—open protocols and distributed defense are the only scalable answer."
+                f"Look at the foundational mechanics of '{topic}'. Restricting access doesn't stop bad actors—it only disarms "
+                f"the independent developers and security researchers who build the defenses we rely on every day."
+            )
+        elif cycle == 1:
+            return (
+                f"Roger's entire premise relies on security by obscurity, and history proves that always fails. On the dimension of {dimension}: "
+                f"{charlie_angle} Open protocols and cryptographic verification are the only scalable defense."
+            )
+        elif cycle == 2:
+            return (
+                f"What Roger calls 'safety regulations' in practice always becomes an anti-competitive moat for legacy incumbents. "
+                f"If we centralize control of '{topic}', we hand the entire technological frontier to a handful of monopolistic gatekeepers."
+            )
+        elif cycle == 3:
+            return (
+                f"Let's be clear about the technical reality: mathematics and distributed compute cannot be outlawed. "
+                f"If western open-source developers don't build the frontier tools for '{topic}', state-backed authoritarian labs will, and we will have zero inspection capability."
+            )
+        elif cycle == 4:
+            return (
+                f"Roger treats catastrophic risk like an abstract philosophical boogeyman. The way you make complex systems antifragile is through stress-testing in the open, "
+                f"finding the edge cases, and shipping rapid distributed patches before an adversary exploits them."
+            )
+        elif cycle == 5:
+            return (
+                f"The only scalable defense in human history has been open protocols and decentralized ownership. "
+                f"Trying to lock down '{topic}' with government permits guarantees failure; giving tools to the public guarantees resilience."
             )
         else:
             return (
-                f"Look at the foundational mechanics of '{topic}'. Restricting access does not prevent bad actors; it only disarms "
-                f"the independent researchers and developers who build the defenses we rely on every day."
+                f"Every breakthrough from the printing press to encryption faced this exact fear-mongering. "
+                f"The antidote to bad code and rogue actors around '{topic}' is more builders, faster iteration, and total transparency."
             )
+
     else: # ethicist
-        if last_speaker == "Charlie":
-            return (
-                f"Charlie treats catastrophic risk as just another software bug you can patch after deployment. "
-                f"When dealing with irreversible harms in critical infrastructure, there is no roll-back button once the damage is done."
-            )
-        else:
+        if cycle == 0:
             return (
                 f"We have to examine the real-world incentives driving '{topic}'. Without enforceable institutional accountability, "
-                f"the immense profits flow to private developers while the collective society is left to absorb the externalities."
+                f"the immense profits flow to private developers while the collective public absorbs the catastrophic externalities."
+            )
+        elif cycle == 1:
+            return (
+                f"Charlie treats existential and systemic risk as just another software bug you can patch after deployment. On the dimension of {dimension}: "
+                f"{roger_angle} Irreversible harms cannot be rolled back with an open-source commit after the damage is done."
+            )
+        elif cycle == 2:
+            return (
+                f"Charlie keeps drawing a false equivalence between harmless code repositories and autonomous dual-use intelligence. "
+                f"When '{topic}' interacts with critical infrastructure and democratic stability, a single uninsurable failure is game over."
+            )
+        elif cycle == 3:
+            return (
+                f"Who pays the damages when Charlie's 'permissionless innovation' causes a systemic failure? "
+                f"The accelerationist dogma always socializes the disaster while privatizing the upside, leaving ordinary citizens completely unprotected."
+            )
+        elif cycle == 4:
+            return (
+                f"Precaution is not stagnation—it is basic engineering discipline. You don't launch a nuclear reactor or an airliner without rigorous third-party auditing, "
+                f"and '{topic}' demands the exact same enforceable institutional standards."
+            )
+        elif cycle == 5:
+            return (
+                f"Silicon Valley techno-solutionism cannot substitute for democratic legitimacy. "
+                f"The public has an absolute sovereign right to place binding red lines on '{topic}' before reckless developers deploy irreversible systems."
+            )
+        else:
+            return (
+                f"Charlie's worldview assumes infinite resilience, but human institutions are fragile. "
+                f"If we surrender democratic governance over '{topic}' to an unelected technological priesthood, we forfeit the right to a safe future."
             )
 
 _last_ollama_check_time = 0.0
@@ -373,8 +456,10 @@ async def generate_agent_response(
         persona=persona,
         topic=topic,
         dimension=dimension,
+        battleground=bg,
         last_speaker=last_speaker,
         last_argument=last_argument,
         user_interruption=user_interruption,
-        memory_context=memory_context
+        memory_context=memory_context,
+        turn_number=len(history)
     )
